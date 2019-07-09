@@ -107,14 +107,18 @@ If everything is configured properly, you should get a reply from each computer 
 #### Host name and IP address binding
 For all computers on a local ROS network, and for all ROS networks, modify the /etc/hosts file using your favorite text editor. The name of each host should be the same as its machine name.
 
-
-
-
 Getting started
 ---------------
 
 See nimbro_topic_transport/README.md and nimbro_service_transport/README.md
 for documentation on the topic and service transport.
+
+Dependencies
+---------------
+
+```bash
+sudo apt install ros-melodic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
+```
 
 State
 -----
