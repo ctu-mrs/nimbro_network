@@ -1,45 +1,3 @@
-### Setting machines
-
-#### Enable multicast
-For all computers, first check if the multicast feature is enabled using the following command.
-```bash
-cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
-```
-
-If this command returns 0, the multicast feature is enabled and you can go ahead to the next section. 
-To temporary enable the multicast feature, execute the following command, however, when the computer restarts, this configuration will be lost.
-```bash
-sudo sh -c "echo 0 >/proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
-```
-
-To permanently enable the multicast feature, edit the /etc/sysctl.conf file and add the following line, or uncomment it, if it already exists, and change its default value.
-```bash
-net.ipv4.icmp_echo_ignore_broadcasts=0
-```
-
-In order for the changes to take effect, execute the following command:
-```bash
-sudo service procps restart
-```
-
-To check which multicast groups are already defined in a computer, execute the following command.
-```bash
-netstat -g
-```
-
-This command will report all the IP addresses enabled for multicast for each of the network interfaces available, both for IPv4 and IPv6. The standard IP address for multicast is 224.0.0.1, that should appear on the list provided by the last command, and it is the one we will use.
-
-At this point, to check whether the multicast feature is working or not, execute the following command, at any computer.
-```bash
-ping 224.0.0.1
-```
-
-If everything is configured properly, you should get a reply from each computer in the common network at each iteration.
-
-#### Host name and IP address binding
-For all computers on a local ROS network, and for all ROS networks, modify the /etc/hosts file using your favorite text editor. The name of each host should be the same as its machine name.
-=====================================================================
-
 nimbro_network - ROS transport for high-latency, low-quality networks
 =====================================================================
 
@@ -107,6 +65,50 @@ Features
       defined intervals.
     * Special nimbro_cam_transport package for encoding/decoding camera images
       to/from H.264
+
+Setting machines
+---------------
+#### Enable multicast
+For all computers, first check if the multicast feature is enabled using the following command.
+```bash
+cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
+```
+
+If this command returns 0, the multicast feature is enabled and you can go ahead to the next section. 
+To temporary enable the multicast feature, execute the following command, however, when the computer restarts, this configuration will be lost.
+```bash
+sudo sh -c "echo 0 >/proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
+```
+
+To permanently enable the multicast feature, edit the /etc/sysctl.conf file and add the following line, or uncomment it, if it already exists, and change its default value.
+```bash
+net.ipv4.icmp_echo_ignore_broadcasts=0
+```
+
+In order for the changes to take effect, execute the following command:
+```bash
+sudo service procps restart
+```
+
+To check which multicast groups are already defined in a computer, execute the following command.
+```bash
+netstat -g
+```
+
+This command will report all the IP addresses enabled for multicast for each of the network interfaces available, both for IPv4 and IPv6. The standard IP address for multicast is 224.0.0.1, that should appear on the list provided by the last command, and it is the one we will use.
+
+At this point, to check whether the multicast feature is working or not, execute the following command, at any computer.
+```bash
+ping 224.0.0.1
+```
+
+If everything is configured properly, you should get a reply from each computer in the common network at each iteration.
+
+#### Host name and IP address binding
+For all computers on a local ROS network, and for all ROS networks, modify the /etc/hosts file using your favorite text editor. The name of each host should be the same as its machine name.
+
+
+
 
 Getting started
 ---------------
