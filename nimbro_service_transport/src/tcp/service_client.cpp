@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
   // Initialize & advertise the list of services
   XmlRpc::XmlRpcValue service_list;
   nh.getParam("services", service_list);
-  ROS_ASSERT(list.getType() == XmlRpc::XmlRpcValue::TypeArray);
+  ROS_ASSERT(service_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
   // exclude this drone from the list
   uav_names.erase(std::remove(uav_names.begin(), uav_names.end(), hostname), uav_names.end());
