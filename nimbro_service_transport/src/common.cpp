@@ -19,7 +19,7 @@ std::string getServiceMD5(const std::string& type)
 	std::string error;
 	if(!ros::names::validate(type, error))
 	{
-		ROS_WARN("Got invalid service type '%s'", type.c_str());
+		ROS_ERROR("Got invalid service type '%s'", type.c_str());
 		return "";
 	}
 
@@ -43,7 +43,7 @@ std::string getServiceMD5(const std::string& type)
 	if(exit_code != 0)
 	{
 		ROS_ERROR("Could not get md5 sum for service type '%s'", type.c_str());
-		return "*";
+		return "";
 	}
 	else
 	{

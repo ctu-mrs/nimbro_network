@@ -11,32 +11,32 @@
 namespace nimbro_service_transport
 {
 
-class ServiceClient
-{
+class ServiceClient {
 public:
-	ServiceClient();
-	~ServiceClient();
+  ServiceClient(const std::string& uav_addr, std::map<std::string, std::vector<std::string>>& services);
+  ~ServiceClient();
 
-	bool call(const std::string& name, ros::ServiceCallbackHelperCallParams& params);
+  bool call(const std::string& name, ros::ServiceCallbackHelperCallParams& params);
+
 private:
-	void publishStatus(const std::string& service, uint8_t status);
+  void publishStatus(const std::string& service, uint8_t status);
 
-	ros::NodeHandle m_nh;
-	std::vector<ros::ServiceServer> m_servers;
+  ros::NodeHandle                 m_nh;
+  std::vector<ros::ServiceServer> m_servers;
 
-	ros::Publisher m_pub_status;
-	uint32_t m_currentCallID;
+  ros::Publisher m_pub_status;
+  uint32_t       m_currentCallID;
 
-	int m_fd;
+  int m_fd;
 
-	sockaddr_storage m_addr;
-	socklen_t m_addrLen;
+  sockaddr_storage m_addr;
+  socklen_t        m_addrLen;
 
-	std::string m_host;
-	std::string m_remote;
-	int m_remotePort;
+  std::string m_host;
+  std::string m_remote;
+  int         m_remotePort;
 };
 
-}
+}  // namespace nimbro_service_transport
 
 #endif

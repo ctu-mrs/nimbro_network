@@ -1,12 +1,24 @@
 <launch>
-	<node name="client" pkg="sb_service_transport" type="service_client" output="screen">
-		<param name="server" value="0.0.0.0" />
-<rosparam>
 
-services:
-  - name: "/mission_control/updateMission"
-    type: "sb_mission_control/UpdateMission"
+  <!-- Service server -->
+  <node name="service_server" pkg="nimbro_service_transport" type="service_server" output="screen">
+    <param name="port" value="6556" />
+  </node>
 
-</rosparam>
-	</node>
+  <!-- Service client -->
+  <node name="service_client" pkg="nimbro_service_transport" type="service_client" output="screen">
+    <param name="port" value="6556" />
+    <rosparam>
+      network:
+        # names of the drones have to match hostnames described in /etc/hosts
+        drone_names: [uav1, uav2]
+
+      services:
+        - name: "/*/control_manager/motors"
+          type: std_srvs/SetBool
+        - name: "/*/uav_manager/takeoff"
+          type: std_srvs/Trigger
+
+    </rosparam>
+  </node>
 </launch>

@@ -11,25 +11,25 @@
 namespace nimbro_service_transport
 {
 
-class ClientHandler
-{
+class ClientHandler {
 public:
-	ClientHandler(int fd, std::string topicPrefix);
-	~ClientHandler();
+  ClientHandler(int fd, std::string topicPrefix);
+  ~ClientHandler();
+
 private:
-	void run();
-	void sendAvailableServices();
+  void run();
+  void sendAvailableServices();
 
-	bool handleHeader(const ros::ConnectionPtr& connection, const ros::Header& header);
-	void handleHeaderWritten();
+  bool handleHeader(const ros::ConnectionPtr& connection, const ros::Header& header);
+  void handleHeaderWritten();
 
-	int m_fd;
-	std::string m_topicPrefix;
-	bool m_gotHeader;
-	ros::Header m_headerBuf;
-	boost::thread m_thread;
+  int           m_fd;
+  std::string   m_topicPrefix;
+  bool          m_gotHeader;
+  ros::Header   m_headerBuf;
+  boost::thread m_thread;
 };
 
-}
+}  // namespace nimbro_service_transport
 
 #endif
