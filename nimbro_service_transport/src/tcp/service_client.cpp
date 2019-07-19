@@ -100,6 +100,8 @@ ServiceClient::ServiceClient(const std::string& uav_addr, std::map<std::string, 
   memcpy(&m_addr, info->ai_addr, info->ai_addrlen);
   m_addrLen = info->ai_addrlen;
 
+  freeaddrinfo(info);
+
   // Initialize & advertise the list of services
   for (auto const& serv_type : services) {
     for (const std::string& topic_name : services[serv_type.first]) {
@@ -321,15 +323,16 @@ int main(int argc, char** argv) {
   for (int32_t i = 0; i < service_list.size(); ++i) {
     XmlRpc::XmlRpcValue& entry = service_list[i];
 
-    std::string service_name = (std::string)entry["name"];
-    std::string type         = (std::string)entry["type"];
+    const std::string service_name = (std::string)entry["name"];
+    const std::string type         = (std::string)entry["type"];
 
     // Find service from all uavs - must start with '/*/'
     if (service_name.compare(0, 3, "/*/") == 0) {
       for (int uav_idx = 0; uav_idx < uav_names.size(); uav_idx++) {
-        std::string uav_name = uav_names.at(uav_idx);
-        service_name.replace(service_name.begin() + 1, service_name.begin() + 2, uav_name);
-        uav_services[uav_name_map[uav_name]][type].push_back(service_name);
+        std::string service_name_copy = service_name;
+        const std::string uav_name = uav_names.at(uav_idx);
+        service_name_copy.replace(service_name_copy.begin() + 1, service_name_copy.begin() + 2, uav_name);
+        uav_services[uav_name_map[uav_name]][type].push_back(service_name_copy);
       }
     }
     // Catch further regex expressions
@@ -341,7 +344,7 @@ int main(int argc, char** argv) {
     else {
       bool specific = false;
       for (int uav_idx = 0; uav_idx < uav_names.size(); uav_idx++) {
-        std::string uav_name = uav_names.at(uav_idx);
+        const std::string uav_name = uav_names.at(uav_idx);
         if (service_name.find(uav_name) != std::string::npos) {
           uav_services[uav_name_map[uav_name]][type].push_back(service_name);
           specific = true;
@@ -359,7 +362,7 @@ int main(int argc, char** argv) {
           ROS_ERROR("Service [%s] has not unique namespace and its target server is unspecified. Specify its server by adding 'uav' tag.",
                     service_name.c_str());
         } else {
-          std::string uav_name = (std::string)entry["uav"];
+          const std::string uav_name = (std::string)entry["uav"];
           // Catch unknown uav name given by tag 'uav'
           if (uav_name_map.count(uav_name) == 0) {
             ROS_ERROR("Unknown UAV name %s. Ommiting.", uav_name.c_str());
@@ -377,7 +380,7 @@ int main(int argc, char** argv) {
     clients.push_back(std::make_unique<nimbro_service_transport::ServiceClient>(uav_addr.first, uav_services[uav_addr.first]));
   }
 
-  ros::MultiThreadedSpinner spinner(4);
+  ros::MultiThreadedSpinner spinner(uav_names.size()+1);
   spinner.spin();
   return 0;
 }

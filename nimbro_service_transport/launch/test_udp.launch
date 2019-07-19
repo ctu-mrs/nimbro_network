@@ -1,19 +1,25 @@
 <launch>
 
-	<node name="udp_server" pkg="nimbro_service_transport" type="udp_server" output="screen">
-		<param name="port" value="6000" />
+  <!-- Service server -->
+  <node name="service_udp_server" pkg="nimbro_service_transport" type="udp_server" output="screen">
+    <param name="port" value="6000" />
+  </node>
+
+  <!-- Service client -->
+  <node name="service_udp_client" pkg="nimbro_service_transport" type="udp_client" output="screen">
+    <param name="port" value="6000" />
+    <param name="timeout" value="3" />
+    <rosparam>
+      network:
+        # names of the drones have to match hostnames described in /etc/hosts
+        drone_names: [uav1, uav2]
+
+      services:
+        - name: "/*/control_manager/motors"
+          type: std_srvs/SetBool
+        - name: "/*/uav_manager/takeoff"
+          type: std_srvs/Trigger
+
+    </rosparam>
 	</node>
-
-	<node name="udp_client" pkg="nimbro_service_transport" type="udp_client" output="screen">
-		<param name="server" value="localhost" />
-		<param name="port" value="6000" />
-<rosparam>
-services:
- - name: /cam/setParam
-   type: camera_v4l2/SetCameraParam
-</rosparam>
-
-		<remap from="/cam/setParam" to="/remote/setParam" />
-	</node>
-
 </launch>

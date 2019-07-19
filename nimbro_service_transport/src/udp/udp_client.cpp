@@ -5,6 +5,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <netdb.h>
@@ -25,304 +26,417 @@ namespace nimbro_service_transport
 namespace
 {
 
-class CallbackHelper : public ros::ServiceCallbackHelper
-{
+class CallbackHelper : public ros::ServiceCallbackHelper {
 public:
-	CallbackHelper(const std::string& name, UDPClient* client)
-	 : m_name(name)
-	 , m_client(client)
-	{}
+  CallbackHelper(const std::string& name, UDPClient* client) : m_name(name), m_client(client) {
+  }
 
-	virtual bool call(ros::ServiceCallbackHelperCallParams& params)
-	{
-		return m_client->call(m_name, params);
-	}
+  virtual bool call(ros::ServiceCallbackHelperCallParams& params) {
+    return m_client->call(m_name, params);
+  }
+
 private:
-	std::string m_name;
-	UDPClient* m_client;
+  std::string m_name;
+  UDPClient*  m_client;
 };
 
+}  // namespace
+
+
+UDPClient::UDPClient(const std::string& uav_addr, std::map<std::string, std::vector<std::string>>& services, const double& timeout)
+    : m_nh("~"), m_fd(-1), m_counter(0), m_remote(uav_addr), m_timeout(timeout) {
+  m_nh.param("port", m_remotePort, 5000);
+
+  std::string portString = boost::lexical_cast<std::string>(m_remotePort);
+
+  // Get local host name for visualization messages
+  char hostnameBuf[256];
+  gethostname(hostnameBuf, sizeof(hostnameBuf));
+  hostnameBuf[sizeof(hostnameBuf) - 1] = 0;
+
+  m_host = hostnameBuf;
+
+  // Resolve remote address
+  addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_socktype = SOCK_DGRAM;
+
+  addrinfo* info;
+
+  if (getaddrinfo(m_remote.c_str(), portString.c_str(), &hints, &info) != 0 || !info) {
+    std::stringstream ss;
+    ss << "getaddrinfo() failed for host '" << m_remote << "': " << strerror(errno);
+    throw std::runtime_error(ss.str());
+  }
+
+  m_fd = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
+  if (m_fd < 0) {
+    std::stringstream ss;
+    ss << "Could not create socket: " << strerror(errno);
+    throw std::runtime_error(ss.str());
+  }
+
+  if (connect(m_fd, info->ai_addr, info->ai_addrlen) != 0) {
+    std::stringstream ss;
+    ss << "Could not connect socket: " << strerror(errno);
+    throw std::runtime_error(ss.str());
+  }
+
+  freeaddrinfo(info);
+
+  // Initialize & advertise the list of services
+  for (auto const& serv_type : services) {
+    for (const std::string& topic_name : services[serv_type.first]) {
+      ROS_INFO("Advertising service [%s] with type [%s].", topic_name.c_str(), serv_type.first.c_str());
+      const std::string md5sum = getServiceMD5(serv_type.first);
+      if (md5sum.empty()) {
+        break;
+      }
+
+      ros::AdvertiseServiceOptions ops;
+      ops.callback_queue = 0;
+      ops.datatype       = serv_type.first;
+      ops.md5sum         = md5sum;
+      ops.helper         = boost::make_shared<CallbackHelper>(topic_name, this);
+      ops.req_datatype   = ops.datatype + "Request";
+      ops.res_datatype   = ops.datatype + "Response";
+      ops.service        = topic_name;
+
+      ros::ServiceServer srv = m_nh.advertiseService(ops);
+      m_servers.push_back(srv);
+    }
+  }
+
+  m_pub_status = m_nh.advertise<ServiceStatus>("/network/service_status", 10);
+
+  m_thread = std::make_unique<boost::thread>(boost::bind(&UDPClient::run, this));
+  ROS_INFO("Service client initialized.");
+}
+
+UDPClient::~UDPClient() {
+  close(m_fd);
+}
+
+uint8_t UDPClient::acquireCounterValue() {
+  boost::unique_lock<boost::mutex> lock(m_mutex);
+  return m_counter++;
+}
+
+bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallParams& params) {
+  std::vector<uint8_t> buffer(sizeof(ServiceCallRequest) + name.length() + 4 + params.request.num_bytes);
+
+  ServiceCallRequest* header = reinterpret_cast<ServiceCallRequest*>(buffer.data());
+  header->timestamp          = ros::Time::now().toNSec();
+  header->counter            = acquireCounterValue();
+  header->name_length        = name.length();
+  header->request_length     = params.request.num_bytes + 4;
+
+  memcpy(buffer.data() + sizeof(ServiceCallRequest), name.c_str(), name.length());
+  memcpy(buffer.data() + sizeof(ServiceCallRequest) + name.length(), &params.request.num_bytes, 4);
+  memcpy(buffer.data() + sizeof(ServiceCallRequest) + name.length() + 4, params.request.buf.get(), params.request.num_bytes);
+
+  RequestRecord record;
+  record.timestamp          = header->timestamp();
+  record.counter            = header->counter;
+  record.response.num_bytes = 0;
+
+  boost::unique_lock<boost::mutex> lock(m_mutex);
+
+  publishStatus(name, header->counter, ServiceStatus::STATUS_IN_PROGRESS);
+
+  auto it = m_requests.insert(m_requests.end(), &record);
+
+  if (send(m_fd, buffer.data(), buffer.size(), 0) != (int)buffer.size()) {
+    ROS_ERROR("Could not send UDP data: %s", strerror(errno));
+    publishStatus(name, header->counter, ServiceStatus::STATUS_CONNECTION_ERROR);
+    return false;
+  }
+
+  // TODO: Timeout
+  boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_timeout * 1000);
+
+  bool gotMsg = record.cond.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
+  m_requests.erase(it);
+
+  if (gotMsg) {
+    params.response = record.response;
+    publishStatus(name, header->counter, ServiceStatus::STATUS_FINISHED_SUCCESS);
+    return true;
+  } else {
+    ROS_WARN("[%s]: Timeout!", name.c_str());
+    publishStatus(name, header->counter, ServiceStatus::STATUS_TIMEOUT);
+    return false;
+  }
 }
 
 
-UDPClient::UDPClient()
- : m_nh("~")
- , m_fd(-1)
- , m_counter(0)
-{
-	m_nh.param("port", m_remotePort, 5000);
+void UDPClient::step() {
+  timeval timeout;
+  timeout.tv_sec  = 0;
+  timeout.tv_usec = 500 * 1000;
 
-	char portString[100];
-	snprintf(portString, sizeof(portString), "%d", m_remotePort);
+  fd_set fds;
+  FD_ZERO(&fds);
+  FD_SET(m_fd, &fds);
 
-	if(!m_nh.getParam("server", m_remote))
-		throw std::runtime_error("udp_client requires the 'server' parameter");
+  int ret = select(m_fd + 1, &fds, 0, 0, &timeout);
+  if (ret < 0) {
+    // Silently ignore EINTR, EAGAIN
+    if (errno == EINTR || errno == EAGAIN)
+      return;
 
-	// Get local host name for visualization messages
-	char hostnameBuf[256];
-	gethostname(hostnameBuf, sizeof(hostnameBuf));
-	hostnameBuf[sizeof(hostnameBuf)-1] = 0;
+    std::stringstream ss;
+    ss << "Could not select(): " << strerror(errno);
+    throw std::runtime_error(ss.str());
+  }
 
-	m_host = hostnameBuf;
-
-	m_nh.param("timeout", m_timeout, 5.0);
-
-	// Resolve remote address
-	addrinfo hints;
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_socktype = SOCK_DGRAM;
-
-	addrinfo* info;
-
-	if(getaddrinfo(m_remote.c_str(), portString, &hints, &info) != 0 || !info)
-	{
-		std::stringstream ss;
-		ss << "getaddrinfo() failed for host '" << m_remote << "': " << strerror(errno);
-		throw std::runtime_error(ss.str());
-	}
-
-	m_fd = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
-	if(m_fd < 0)
-	{
-		std::stringstream ss;
-		ss << "Could not create socket: " << strerror(errno);
-		throw std::runtime_error(ss.str());
-	}
-
-	if(connect(m_fd, info->ai_addr, info->ai_addrlen) != 0)
-	{
-		std::stringstream ss;
-		ss << "Could not connect socket: " << strerror(errno);
-		throw std::runtime_error(ss.str());
-	}
-
-	freeaddrinfo(info);
-
-	// Initialize & advertise the list of services
-	XmlRpc::XmlRpcValue list;
-	m_nh.getParam("services", list);
-
-	ROS_ASSERT(list.getType() == XmlRpc::XmlRpcValue::TypeArray);
-
-	for(int32_t i = 0; i < list.size(); ++i)
-	{
-		XmlRpc::XmlRpcValue& entry = list[i];
-		ROS_ASSERT(entry.getType() == XmlRpc::XmlRpcValue::TypeStruct);
-		ROS_ASSERT(entry.hasMember("name"));
-		ROS_ASSERT(entry.hasMember("type"));
-
-		std::string name = (std::string)entry["name"];
-		std::string type = (std::string)entry["type"];
-
-		ros::AdvertiseServiceOptions ops;
-		ops.callback_queue = 0;
-		ops.datatype = type;
-		ops.md5sum = getServiceMD5(ops.datatype);
-		ops.helper = boost::make_shared<CallbackHelper>(name, this);
-		ops.req_datatype = ops.datatype + "Request";
-		ops.res_datatype = ops.datatype + "Response";
-		ops.service = name;
-
-		ROS_DEBUG("Advertising service '%s'", ops.service.c_str());
-
-		ros::ServiceServer srv = m_nh.advertiseService(ops);
-		m_servers.push_back(srv);
-	}
-
-	m_pub_status = m_nh.advertise<ServiceStatus>("/network/service_status", 10);
-
-	ROS_INFO("Service client initialized.");
+  if (ret > 0) {
+    handlePacket();
+  }
 }
 
-UDPClient::~UDPClient()
-{
-	close(m_fd);
+void UDPClient::handlePacket() {
+  int packetSize;
+
+  while (1) {
+    if (ioctl(m_fd, FIONREAD, &packetSize) != 0) {
+      if (errno == EAGAIN || errno == EINTR)
+        continue;
+      else {
+        perror("FIONREAD");
+        break;
+      }
+    }
+
+    m_recvBuf.resize(packetSize);
+    break;
+  }
+
+  int bytes = recv(m_fd, m_recvBuf.data(), m_recvBuf.size(), 0);
+  if (bytes < 0) {
+    if (errno == ECONNREFUSED) {
+      ROS_ERROR("Got negative ICMP reply. Is the UDP server running?");
+      return;
+    }
+
+    std::stringstream ss;
+    ss << "Could not recv(): " << strerror(errno);
+    throw std::runtime_error(ss.str());
+  }
+
+  if (bytes < (int)sizeof(ServiceCallResponse)) {
+    ROS_ERROR("Short response packet, ignoring...");
+    return;
+  }
+
+  const auto* resp = reinterpret_cast<const ServiceCallResponse*>(m_recvBuf.data());
+
+  if (resp->response_length() + sizeof(ServiceCallResponse) > (size_t)bytes) {
+    ROS_ERROR("Response is longer than packet...");
+    return;
+  }
+
+  boost::unique_lock<boost::mutex> lock(m_mutex);
+  for (auto it = m_requests.begin(); it != m_requests.end(); ++it) {
+    if (resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter) {
+      boost::shared_array<uint8_t> data(new uint8_t[resp->response_length()]);
+      memcpy(data.get(), m_recvBuf.data() + sizeof(ServiceCallResponse), resp->response_length());
+      (*it)->response = ros::SerializedMessage(data, resp->response_length());
+
+      (*it)->cond.notify_one();
+      return;
+    }
+  }
+
+  ROS_ERROR("Received unexpected UDP service packet answer, ignoring");
 }
 
-uint8_t UDPClient::acquireCounterValue()
-{
-	boost::unique_lock<boost::mutex> lock(m_mutex);
-	return m_counter++;
+void UDPClient::run(){
+  while (ros::ok()) {
+    step();
+  }
 }
 
-bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallParams& params)
-{
-	std::vector<uint8_t> buffer(sizeof(ServiceCallRequest) + name.length() + 4 + params.request.num_bytes);
+void UDPClient::publishStatus(const std::string& service, uint32_t call, uint8_t status) {
+  ServiceStatus msg;
+  msg.host        = m_host;
+  msg.remote      = m_remote;
+  msg.remote_port = m_remotePort;
 
-	ServiceCallRequest* header = reinterpret_cast<ServiceCallRequest*>(buffer.data());
-	header->timestamp = ros::Time::now().toNSec();
-	header->counter = acquireCounterValue();
-	header->name_length = name.length();
-	header->request_length = params.request.num_bytes + 4;
+  msg.call_id = call;
+  msg.service = service;
 
-	memcpy(buffer.data() + sizeof(ServiceCallRequest), name.c_str(), name.length());
-	memcpy(buffer.data() + sizeof(ServiceCallRequest) + name.length(), &params.request.num_bytes, 4);
-	memcpy(buffer.data() + sizeof(ServiceCallRequest) + name.length() + 4, params.request.buf.get(), params.request.num_bytes);
+  msg.status = status;
 
-	RequestRecord record;
-	record.timestamp = header->timestamp();
-	record.counter = header->counter;
-	record.response.num_bytes = 0;
-
-	boost::unique_lock<boost::mutex> lock(m_mutex);
-
-	publishStatus(name, header->counter, ServiceStatus::STATUS_IN_PROGRESS);
-
-	auto it = m_requests.insert(m_requests.end(), &record);
-
-	if(send(m_fd, buffer.data(), buffer.size(), 0) != (int)buffer.size())
-	{
-		ROS_ERROR("Could not send UDP data: %s", strerror(errno));
-		publishStatus(name, header->counter, ServiceStatus::STATUS_CONNECTION_ERROR);
-		return false;
-	}
-
-	// TODO: Timeout
-	boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_timeout * 1000);
-
-	bool gotMsg = record.cond.timed_wait(lock, timeout, [&](){ return record.response.num_bytes != 0; });
-	m_requests.erase(it);
-
-	if(gotMsg)
-	{
-		params.response = record.response;
-		publishStatus(name, header->counter, ServiceStatus::STATUS_FINISHED_SUCCESS);
-		return true;
-	}
-	else
-	{
-		ROS_WARN("timeout!");
-		publishStatus(name, header->counter, ServiceStatus::STATUS_TIMEOUT);
-		return false;
-	}
+  m_pub_status.publish(msg);
 }
 
-void UDPClient::step()
-{
-	timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 500 * 1000;
+}  // namespace nimbro_service_transport
 
-	fd_set fds;
-	FD_ZERO(&fds);
-	FD_SET(m_fd, &fds);
+int main(int argc, char** argv) {
+  ros::init(argc, argv, "udp_client");
+  ros::NodeHandle nh("~");
 
-	int ret = select(m_fd + 1, &fds, 0, 0, &timeout);
-	if(ret < 0)
-	{
-		// Silently ignore EINTR, EAGAIN
-		if(errno == EINTR || errno == EAGAIN)
-			return;
+  ROS_INFO("Loading parameters: ");
 
-		std::stringstream ss;
-		ss << "Could not select(): " << strerror(errno);
-		throw std::runtime_error(ss.str());
-	}
+  // Get local hostname
+  char hostname_buf[256];
+  gethostname(hostname_buf, sizeof(hostname_buf));
+  /* hostname_buf[sizeof(hostname_buf) - 1] = 0; */
+  std::string hostname = hostname_buf;
 
-	if(ret > 0)
-	{
-		handlePacket();
-	}
-}
+  std::vector<std::string> uav_names;
+  nh.getParam("network/drone_names", uav_names);
 
-void UDPClient::handlePacket()
-{
-	int packetSize;
+  double timeout;
+  nh.param("timeout", timeout, double(10));
 
-	while(1)
-	{
-		if(ioctl(m_fd, FIONREAD, &packetSize) != 0)
-		{
-			if(errno == EAGAIN || errno == EINTR)
-				continue;
-			else
-			{
-				perror("FIONREAD");
-				break;
-			}
-		}
+  // Initialize & advertise the list of services
+  XmlRpc::XmlRpcValue service_list;
+  nh.getParam("services", service_list);
+  ROS_ASSERT(service_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
-		m_recvBuf.resize(packetSize);
-		break;
-	}
+  // exclude this drone from the list
+  uav_names.erase(std::remove(uav_names.begin(), uav_names.end(), hostname), uav_names.end());
 
-	int bytes = recv(m_fd, m_recvBuf.data(), m_recvBuf.size(), 0);
-	if(bytes < 0)
-	{
-		if(errno == ECONNREFUSED)
-		{
-			ROS_ERROR("Got negative ICMP reply. Is the UDP server running?");
-			return;
-		}
+  // printing timeout parameter 
+  std::cout << "    parameter 'timeout': " << timeout << std::endl;
 
-		std::stringstream ss;
-		ss << "Could not recv(): " << strerror(errno);
-		throw std::runtime_error(ss.str());
-	}
+  // printing uav_name list
+  std::string tmp_print_list;
+  for (unsigned long i = 0; i < uav_names.size() - 1; i++) {
+    tmp_print_list.append(uav_names.at(i) + std::string(", "));
+  }
+  tmp_print_list.append(uav_names.back());
+  std::cout << "    parameter 'network/drone_names': " << tmp_print_list.c_str() << std::endl;
 
-	if(bytes < (int)sizeof(ServiceCallResponse))
-	{
-		ROS_ERROR("Short response packet, ignoring...");
-		return;
-	}
+  // printing service list
+  std::cout << "    parameter 'services': ";
+  for (int32_t i = 0; i < service_list.size(); ++i) {
+    XmlRpc::XmlRpcValue& entry = service_list[i];
+    ROS_ASSERT(entry.getType() == XmlRpc::XmlRpcValue::TypeStruct);
+    ROS_ASSERT(entry.hasMember("name"));
+    ROS_ASSERT(entry.hasMember("type"));
 
-	const auto* resp = reinterpret_cast<const ServiceCallResponse*>(m_recvBuf.data());
+    std::string name        = (std::string)entry["name"];
+    std::string type        = (std::string)entry["type"];
+    std::string indentation = "                          ";
+    if (i != 0) {
+      std::cout << indentation;
+    }
+    std::cout << "-- name: " << name << std::endl;
+    std::cout << indentation << " - type: " << type << std::endl;
+  }
+  std::cout << std::endl;
 
-	if(resp->response_length() + sizeof(ServiceCallResponse) > (size_t)bytes)
-	{
-		ROS_ERROR("Response is longer than packet...");
-		return;
-	}
+  // sanity check
+  if (uav_names.empty()) {
+    ROS_ERROR("Drone names list is empty or contains only the hostname of this device.!");
+    ros::shutdown();
+    return -1;
+  }
 
-	boost::unique_lock<boost::mutex> lock(m_mutex);
-	for(auto it = m_requests.begin(); it != m_requests.end(); ++it)
-	{
-		if(resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter)
-		{
-			boost::shared_array<uint8_t> data(new uint8_t[resp->response_length()]);
-			memcpy(data.get(), m_recvBuf.data() + sizeof(ServiceCallResponse), resp->response_length());
-			(*it)->response = ros::SerializedMessage(data, resp->response_length());
+  if (service_list.size() == 0) {
+    ROS_ERROR("Service list is empty!");
+    ros::shutdown();
+    return -1;
+  }
 
-			(*it)->cond.notify_one();
-			return;
-		}
-	}
 
-	ROS_ERROR("Received unexpected UDP service packet answer, ignoring");
-}
+  // resolve hostnames
+  std::map<std::string, std::string> uav_name_map;  // map(key=uav_name, value=uav_ip_addr)
 
-void UDPClient::publishStatus(const std::string& service, uint32_t call, uint8_t status)
-{
-	ServiceStatus msg;
-	msg.host = m_host;
-	msg.remote = m_remote;
-	msg.remote_port = m_remotePort;
+  struct hostent* host_entry;
+  bool            tmp_valid = true;
+  for (const std::string& tmp_name : uav_names) {
+    // To retrieve host information
+    host_entry = gethostbyname(tmp_name.c_str());
+    if (host_entry == NULL) {
+      ROS_ERROR("Cannot resolve hostname '%s'. It is not specified in '/etc/hosts'.", tmp_name.c_str());
+      tmp_valid = false;
+      continue;
+    }
+    // To convert an Internet network
+    // address into ASCII string
+    const std::string resolved_ip = inet_ntoa(*((struct in_addr*)host_entry->h_addr_list[0]));
+    uav_name_map[tmp_name]        = resolved_ip;
+  }
+  if (!tmp_valid) {
+    ros::shutdown();
+    return -1;
+  }
 
-	msg.call_id = call;
-	msg.service = service;
+  // printing resolved drone list
+  ROS_INFO("Resolved 'drone_names':");
+  for (auto const& [name, ip] : uav_name_map) {
+    std::cout << "                 " << name << "\t\t ---> \t\t" << ip << std::endl;
+  }
 
-	msg.status = status;
+  std::map<std::string, std::map<std::string, std::vector<std::string>>> uav_services;  // map(key=uav_name, value=map(key=topic_type, value=topic_name))
 
-	m_pub_status.publish(msg);
-}
+  // parse service list
+  for (int32_t i = 0; i < service_list.size(); ++i) {
+    XmlRpc::XmlRpcValue& entry = service_list[i];
 
-}
+    const std::string service_name = (std::string)entry["name"];
+    const std::string type         = (std::string)entry["type"];
 
-int main(int argc, char** argv)
-{
-	ros::init(argc, argv, "udp_client");
+    // Find service from all uavs - must start with '/*/'
+    if (service_name.compare(0, 3, "/*/") == 0) {
+      for (int uav_idx = 0; uav_idx < uav_names.size(); uav_idx++) {
+        std::string service_name_copy = service_name;
+        const std::string uav_name = uav_names.at(uav_idx);
+        service_name_copy.replace(service_name_copy.begin() + 1, service_name_copy.begin() + 2, uav_name);
+        uav_services[uav_name_map[uav_name]][type].push_back(service_name_copy);
+      }
+    }
+    // Catch further regex expressions
+    else if (service_name.find("*") != std::string::npos) {
+      ROS_ERROR("Regex expressions [%s] are not allowed, with the exception of regex uav names (i.e. solely '/*/topic_name' is allowed).",
+                service_name.c_str());
+    }
+    // Write down services from specified uavs
+    else {
+      bool specific = false;
+      for (int uav_idx = 0; uav_idx < uav_names.size(); uav_idx++) {
+        const std::string uav_name = uav_names.at(uav_idx);
+        if (service_name.find(uav_name) != std::string::npos) {
+          uav_services[uav_name_map[uav_name]][type].push_back(service_name);
+          specific = true;
+          break;
+        }
+      }
+      // If service is not namespaced, we need address specifications
+      if (!specific) {
+        // Catch unknown uav name
+        if (service_name.find("uav") != std::string::npos) {
+          ROS_ERROR("Given UAV of service [%s] is unknown.", service_name.c_str());
+        }
+        // Catch non-namespace elements without 'uav' tag
+        else if (!entry.hasMember("uav")) {
+          ROS_ERROR("Service [%s] has not unique namespace and its target server is unspecified. Specify its server by adding 'uav' tag.",
+                    service_name.c_str());
+        } else {
+          const std::string uav_name = (std::string)entry["uav"];
+          // Catch unknown uav name given by tag 'uav'
+          if (uav_name_map.count(uav_name) == 0) {
+            ROS_ERROR("Unknown UAV name %s. Ommiting.", uav_name.c_str());
+          } else {
+            uav_services[uav_name_map[uav_name]][type].push_back(service_name);
+          }
+        }
+      }
+    }
+  }
 
-	nimbro_service_transport::UDPClient client;
+  std::vector<std::unique_ptr<nimbro_service_transport::UDPClient>> clients;
+  for (auto const& uav_addr : uav_services) {
+    ROS_INFO("Initializing connection to server: %s", uav_addr.first.c_str());
+    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(uav_addr.first, uav_services[uav_addr.first], timeout));
+  }
 
-	ros::AsyncSpinner spinner(10);
-	spinner.start();
+  ros::MultiThreadedSpinner spinner(uav_names.size()+1);
+  spinner.spin();
 
-	while(ros::ok())
-	{
-		client.step();
-	}
-
-	spinner.stop();
-
-	return 0;
+  return 0;
 }
