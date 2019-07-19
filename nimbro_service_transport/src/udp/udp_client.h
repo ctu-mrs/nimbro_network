@@ -15,7 +15,7 @@ namespace nimbro_service_transport
 
 class UDPClient {
 public:
-  UDPClient(const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services, const double& timeout);
+  UDPClient(const std::string& robot_hostname, const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services, const double& timeout);
   virtual ~UDPClient();
 
   bool call(const std::string& name, ros::ServiceCallbackHelperCallParams& params);
@@ -43,7 +43,7 @@ private:
     uint8_t  counter;
 
     ros::SerializedMessage    response;
-    boost::condition_variable cond;
+    boost::condition_variable cond_response_received;
   };
 
   std::list<RequestRecord*> m_requests;
@@ -51,6 +51,7 @@ private:
   double m_timeout;
 
   std::string m_remote;
+  std::string m_remote_hostname;
   int         m_remotePort;
   std::string m_host;
 

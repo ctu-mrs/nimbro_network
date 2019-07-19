@@ -32,7 +32,14 @@ public:
   }
 
   virtual bool call(ros::ServiceCallbackHelperCallParams& params) {
-    return m_client->call(m_name, params);
+    ROS_INFO("[%s]: Calling", m_name.c_str());
+    bool call_result = m_client->call(m_name, params);
+    if (call_result) {
+      ROS_INFO("[%s]: Call was successful", m_name.c_str());
+    }else{
+      ROS_ERROR("[%s]: Call error", m_name.c_str());
+    }
+    return call_result;
   }
 
 private:
@@ -43,8 +50,9 @@ private:
 }  // namespace
 
 
-UDPClient::UDPClient(const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services, const double& timeout)
-    : m_nh("~"), m_fd(-1), m_counter(0), m_remote(robot_addr), m_timeout(timeout) {
+UDPClient::UDPClient(const std::string& robot_hostname, const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services,
+                     const double& timeout)
+    : m_nh("~"), m_fd(-1), m_counter(0), m_remote_hostname(robot_hostname), m_remote(robot_addr), m_timeout(timeout) {
   m_nh.param("port", m_remotePort, 5000);
 
   std::string portString = boost::lexical_cast<std::string>(m_remotePort);
@@ -123,6 +131,7 @@ uint8_t UDPClient::acquireCounterValue() {
 }
 
 bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallParams& params) {
+
   std::vector<uint8_t> buffer(sizeof(ServiceCallRequest) + name.length() + 4 + params.request.num_bytes);
 
   ServiceCallRequest* header = reinterpret_cast<ServiceCallRequest*>(buffer.data());
@@ -147,7 +156,7 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
   auto it = m_requests.insert(m_requests.end(), &record);
 
   if (send(m_fd, buffer.data(), buffer.size(), 0) != (int)buffer.size()) {
-    ROS_ERROR("Could not send UDP data: %s", strerror(errno));
+    ROS_ERROR("[%s] Could not send UDP data: %s", m_remote_hostname.c_str(), strerror(errno));
     publishStatus(name, header->counter, ServiceStatus::STATUS_CONNECTION_ERROR);
     return false;
   }
@@ -155,7 +164,7 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
   // TODO: Timeout
   boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_timeout * 1000);
 
-  bool gotMsg = record.cond.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
+  bool gotMsg = record.cond_response_received.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
   m_requests.erase(it);
 
   if (gotMsg) {
@@ -163,7 +172,7 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
     publishStatus(name, header->counter, ServiceStatus::STATUS_FINISHED_SUCCESS);
     return true;
   } else {
-    ROS_WARN("[%s]: Timeout!", name.c_str());
+    ROS_WARN("[%s]: Have not received the response in timeout!", name.c_str());
     publishStatus(name, header->counter, ServiceStatus::STATUS_TIMEOUT);
     return false;
   }
@@ -215,7 +224,7 @@ void UDPClient::handlePacket() {
   int bytes = recv(m_fd, m_recvBuf.data(), m_recvBuf.size(), 0);
   if (bytes < 0) {
     if (errno == ECONNREFUSED) {
-      ROS_ERROR("Got negative ICMP reply. Is the UDP server running?");
+      ROS_ERROR("[%s], Got negative ICMP reply. Is the UDP server running?", m_remote_hostname.c_str());
       return;
     }
 
@@ -225,17 +234,23 @@ void UDPClient::handlePacket() {
   }
 
   if (bytes < (int)sizeof(ServiceCallResponse)) {
-    ROS_ERROR("Short response packet, ignoring...");
+    ROS_ERROR("[%s] Short response packet, ignoring...", m_remote_hostname.c_str());
     return;
   }
 
+  if (bytes < (int)sizeof(ServiceCallResponse)) {
+    ROS_ERROR("[%s] Short response packet, ignoring...", m_remote_hostname.c_str());
+    return;
+  }
+  // it can be only ServiceCallResponse
   const auto* resp = reinterpret_cast<const ServiceCallResponse*>(m_recvBuf.data());
 
   if (resp->response_length() + sizeof(ServiceCallResponse) > (size_t)bytes) {
-    ROS_ERROR("Response is longer than packet...");
+    ROS_ERROR("[%s] Response is longer than packet...", m_remote_hostname.c_str());
     return;
   }
 
+  /* ROS_WARN("[%s] received data", m_remote_hostname.c_str()); */
   boost::unique_lock<boost::mutex> lock(m_mutex);
   for (auto it = m_requests.begin(); it != m_requests.end(); ++it) {
     if (resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter) {
@@ -243,15 +258,15 @@ void UDPClient::handlePacket() {
       memcpy(data.get(), m_recvBuf.data() + sizeof(ServiceCallResponse), resp->response_length());
       (*it)->response = ros::SerializedMessage(data, resp->response_length());
 
-      (*it)->cond.notify_one();
+      (*it)->cond_response_received.notify_one();
       return;
     }
   }
 
-  ROS_ERROR("Received unexpected UDP service packet answer, ignoring");
+  ROS_ERROR("[%s] Received unexpected UDP service packet answer, ignoring", m_remote_hostname.c_str());
 }
 
-void UDPClient::run(){
+void UDPClient::run() {
   while (ros::ok()) {
     step();
   }
@@ -299,7 +314,7 @@ int main(int argc, char** argv) {
   // exclude this robot from the list
   robot_names.erase(std::remove(robot_names.begin(), robot_names.end(), hostname), robot_names.end());
 
-  // printing timeout parameter 
+  // printing timeout parameter
   std::cout << "    parameter 'timeout': " << timeout << std::endl;
 
   // printing robot_names list
@@ -359,7 +374,7 @@ int main(int argc, char** argv) {
     // To convert an Internet network
     // address into ASCII string
     const std::string resolved_ip = inet_ntoa(*((struct in_addr*)host_entry->h_addr_list[0]));
-    robot_name_map[tmp_name]        = resolved_ip;
+    robot_name_map[tmp_name]      = resolved_ip;
   }
   if (!tmp_valid) {
     ros::shutdown();
@@ -384,8 +399,8 @@ int main(int argc, char** argv) {
     // Find service from all robots - must start with '/*/'
     if (service_name.compare(0, 3, "/*/") == 0) {
       for (int robot_idx = 0; robot_idx < robot_names.size(); robot_idx++) {
-        std::string service_name_copy = service_name;
-        const std::string robot_name = robot_names.at(robot_idx);
+        std::string       service_name_copy = service_name;
+        const std::string robot_name        = robot_names.at(robot_idx);
         service_name_copy.replace(service_name_copy.begin() + 1, service_name_copy.begin() + 2, robot_name);
         robot_services[robot_name_map[robot_name]][type].push_back(service_name_copy);
       }
@@ -430,12 +445,14 @@ int main(int argc, char** argv) {
   }
 
   std::vector<std::unique_ptr<nimbro_service_transport::UDPClient>> clients;
+  int                                                               i = 0;
   for (auto const& robot_addr : robot_services) {
     ROS_INFO("Initializing connection to server: %s", robot_addr.first.c_str());
-    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_addr.first, robot_services[robot_addr.first], timeout));
+    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_names[i], robot_addr.first, robot_services[robot_addr.first], timeout));
+    i++;
   }
 
-  ros::MultiThreadedSpinner spinner(robot_names.size()+1);
+  ros::MultiThreadedSpinner spinner(robot_names.size() + 1);
   spinner.spin();
 
   return 0;

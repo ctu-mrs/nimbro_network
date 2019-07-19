@@ -28,12 +28,6 @@ struct ServiceCallResponse
 	LEValue<4> response_length;
 };
 
-struct ServiceCallAcknowledgement
-{
-	LEValue<8> timestamp;
-	uint8_t counter;
-};
-
 }
 
 #endif
