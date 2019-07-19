@@ -13,7 +13,7 @@ namespace nimbro_service_transport
 
 class ServiceClient {
 public:
-  ServiceClient(const std::string& uav_addr, std::map<std::string, std::vector<std::string>>& services);
+  ServiceClient(const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services);
   ~ServiceClient();
 
   bool call(const std::string& name, ros::ServiceCallbackHelperCallParams& params);

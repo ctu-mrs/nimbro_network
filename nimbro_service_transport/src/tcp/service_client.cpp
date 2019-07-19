@@ -68,8 +68,8 @@ private:
   ServiceClient* m_client;
 };
 
-ServiceClient::ServiceClient(const std::string& uav_addr, std::map<std::string, std::vector<std::string>>& services)
-    : m_nh("~"), m_currentCallID(0), m_fd(-1), m_remote(uav_addr) {
+ServiceClient::ServiceClient(const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services)
+    : m_nh("~"), m_currentCallID(0), m_fd(-1), m_remote(robot_addr) {
   m_nh.param("port", m_remotePort, 6050);
 
   std::string portString = boost::lexical_cast<std::string>(m_remotePort);
@@ -236,24 +236,24 @@ int main(int argc, char** argv) {
   /* hostname_buf[sizeof(hostname_buf) - 1] = 0; */
   std::string hostname = hostname_buf;
 
-  std::vector<std::string> uav_names;
-  nh.getParam("network/drone_names", uav_names);
+  std::vector<std::string> robot_names;
+  nh.getParam("network/robot_names", robot_names);
 
   // Initialize & advertise the list of services
   XmlRpc::XmlRpcValue service_list;
   nh.getParam("services", service_list);
   ROS_ASSERT(service_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
-  // exclude this drone from the list
-  uav_names.erase(std::remove(uav_names.begin(), uav_names.end(), hostname), uav_names.end());
+  // exclude this robot from the list
+  robot_names.erase(std::remove(robot_names.begin(), robot_names.end(), hostname), robot_names.end());
 
-  // printing uav_name list
+  // printing robot_name list
   std::string tmp_print_list;
-  for (unsigned long i = 0; i < uav_names.size() - 1; i++) {
-    tmp_print_list.append(uav_names.at(i) + std::string(", "));
+  for (unsigned long i = 0; i < robot_names.size() - 1; i++) {
+    tmp_print_list.append(robot_names.at(i) + std::string(", "));
   }
-  tmp_print_list.append(uav_names.back());
-  std::cout << "    parameter 'network/drone_names': " << tmp_print_list.c_str() << std::endl;
+  tmp_print_list.append(robot_names.back());
+  std::cout << "    parameter 'network/robot_names': " << tmp_print_list.c_str() << std::endl;
 
   // printing service list
   std::cout << "    parameter 'services': ";
@@ -275,8 +275,8 @@ int main(int argc, char** argv) {
   std::cout << std::endl;
 
   // sanity check
-  if (uav_names.empty()) {
-    ROS_ERROR("Drone names list is empty or contains only the hostname of this device.!");
+  if (robot_names.empty()) {
+    ROS_ERROR("robot names list is empty or contains only the hostname of this device.!");
     ros::shutdown();
     return -1;
   }
@@ -289,11 +289,11 @@ int main(int argc, char** argv) {
 
 
   // resolve hostnames
-  std::map<std::string, std::string> uav_name_map;  // map(key=uav_name, value=uav_ip_addr)
+  std::map<std::string, std::string> robot_name_map;  // map(key=robot_name, value=robot_ip_addr)
 
   struct hostent* host_entry;
   bool            tmp_valid = true;
-  for (const std::string& tmp_name : uav_names) {
+  for (const std::string& tmp_name : robot_names) {
     // To retrieve host information
     host_entry = gethostbyname(tmp_name.c_str());
     if (host_entry == NULL) {
@@ -304,20 +304,20 @@ int main(int argc, char** argv) {
     // To convert an Internet network
     // address into ASCII string
     const std::string resolved_ip = inet_ntoa(*((struct in_addr*)host_entry->h_addr_list[0]));
-    uav_name_map[tmp_name]        = resolved_ip;
+    robot_name_map[tmp_name]        = resolved_ip;
   }
   if (!tmp_valid) {
     ros::shutdown();
     return -1;
   }
 
-  // printing resolved drone list
-  ROS_INFO("Resolved 'drone_names':");
-  for (auto const& [name, ip] : uav_name_map) {
-    std::cout << "                 " << name << " ---> " << ip << std::endl;
+  // printing resolved robot list
+  ROS_INFO("Resolved 'robot_names':");
+  for (auto const& [name, ip] : robot_name_map) {
+    std::cout << "                 " << name << "\t\t---> \t\t" << ip << std::endl;
   }
 
-  std::map<std::string, std::map<std::string, std::vector<std::string>>> uav_services;  // map(key=uav_name, value=map(key=topic_type, value=topic_name))
+  std::map<std::string, std::map<std::string, std::vector<std::string>>> robot_services;  // map(key=robot_name, value=map(key=topic_type, value=topic_name))
 
   // parse service list
   for (int32_t i = 0; i < service_list.size(); ++i) {
@@ -326,48 +326,48 @@ int main(int argc, char** argv) {
     const std::string service_name = (std::string)entry["name"];
     const std::string type         = (std::string)entry["type"];
 
-    // Find service from all uavs - must start with '/*/'
+    // Find service from all robots - must start with '/*/'
     if (service_name.compare(0, 3, "/*/") == 0) {
-      for (int uav_idx = 0; uav_idx < uav_names.size(); uav_idx++) {
+      for (int robot_idx = 0; robot_idx < robot_names.size(); robot_idx++) {
         std::string service_name_copy = service_name;
-        const std::string uav_name = uav_names.at(uav_idx);
-        service_name_copy.replace(service_name_copy.begin() + 1, service_name_copy.begin() + 2, uav_name);
-        uav_services[uav_name_map[uav_name]][type].push_back(service_name_copy);
+        const std::string robot_name = robot_names.at(robot_idx);
+        service_name_copy.replace(service_name_copy.begin() + 1, service_name_copy.begin() + 2, robot_name);
+        robot_services[robot_name_map[robot_name]][type].push_back(service_name_copy);
       }
     }
     // Catch further regex expressions
     else if (service_name.find("*") != std::string::npos) {
-      ROS_ERROR("Regex expressions [%s] are not allowed, with the exception of regex uav names (i.e. solely '/*/topic_name' is allowed).",
+      ROS_ERROR("Regex expressions [%s] are not allowed, with the exception of regex robot names (i.e. solely '/*/topic_name' is allowed).",
                 service_name.c_str());
     }
-    // Write down services from specified uavs
+    // Write down services from specified robots
     else {
       bool specific = false;
-      for (int uav_idx = 0; uav_idx < uav_names.size(); uav_idx++) {
-        const std::string uav_name = uav_names.at(uav_idx);
-        if (service_name.find(uav_name) != std::string::npos) {
-          uav_services[uav_name_map[uav_name]][type].push_back(service_name);
+      for (int robot_idx = 0; robot_idx < robot_names.size(); robot_idx++) {
+        const std::string robot_name = robot_names.at(robot_idx);
+        if (service_name.find(robot_name) != std::string::npos) {
+          robot_services[robot_name_map[robot_name]][type].push_back(service_name);
           specific = true;
           break;
         }
       }
       // If service is not namespaced, we need address specifications
       if (!specific) {
-        // Catch unknown uav name
-        if (service_name.find("uav") != std::string::npos) {
-          ROS_ERROR("Given UAV of service [%s] is unknown.", service_name.c_str());
+        // Catch unknown robot name
+        if (service_name.find("robot") != std::string::npos) {
+          ROS_ERROR("Given robot of service [%s] is unknown.", service_name.c_str());
         }
-        // Catch non-namespace elements without 'uav' tag
-        else if (!entry.hasMember("uav")) {
-          ROS_ERROR("Service [%s] has not unique namespace and its target server is unspecified. Specify its server by adding 'uav' tag.",
+        // Catch non-namespace elements without 'robot' tag
+        else if (!entry.hasMember("robot")) {
+          ROS_ERROR("Service [%s] has not unique namespace and its target server is unspecified. Specify its server by adding 'robot' tag.",
                     service_name.c_str());
         } else {
-          const std::string uav_name = (std::string)entry["uav"];
-          // Catch unknown uav name given by tag 'uav'
-          if (uav_name_map.count(uav_name) == 0) {
-            ROS_ERROR("Unknown UAV name %s. Ommiting.", uav_name.c_str());
+          const std::string robot_name = (std::string)entry["robot"];
+          // Catch unknown robot name given by tag 'robot'
+          if (robot_name_map.count(robot_name) == 0) {
+            ROS_ERROR("Unknown robot name %s. Ommiting.", robot_name.c_str());
           } else {
-            uav_services[uav_name_map[uav_name]][type].push_back(service_name);
+            robot_services[robot_name_map[robot_name]][type].push_back(service_name);
           }
         }
       }
@@ -375,12 +375,12 @@ int main(int argc, char** argv) {
   }
 
   std::vector<std::unique_ptr<nimbro_service_transport::ServiceClient>> clients;
-  for (auto const& uav_addr : uav_services) {
-    ROS_INFO("Initializing connection to server: %s", uav_addr.first.c_str());
-    clients.push_back(std::make_unique<nimbro_service_transport::ServiceClient>(uav_addr.first, uav_services[uav_addr.first]));
+  for (auto const& robot_addr : robot_services) {
+    ROS_INFO("Initializing connection to server: %s", robot_addr.first.c_str());
+    clients.push_back(std::make_unique<nimbro_service_transport::ServiceClient>(robot_addr.first, robot_services[robot_addr.first]));
   }
 
-  ros::MultiThreadedSpinner spinner(uav_names.size()+1);
+  ros::MultiThreadedSpinner spinner(robot_names.size()+1);
   spinner.spin();
   return 0;
 }
