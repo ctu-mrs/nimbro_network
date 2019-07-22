@@ -29,8 +29,21 @@ namespace nimbro_service_transport
 {
 
 UDPServer::UDPServer() : m_nh("~"), m_buffer(1024) {
+  ROS_INFO("Starting UDP SERVER ");
+  ROS_INFO("Loading parameters: ");
+
   int port;
   m_nh.param("port", port, 5000);
+  m_nh.param("call_timeout", m_call_timeout, double(0.1));
+  m_nh.param("call_repeats", m_call_repeats, int(3));
+
+  // printing port parameter
+  std::cout << "    parameter 'port': " << port << std::endl;
+  // printing call_timeout parameter
+  std::cout << "    parameter 'call_timeout': " << m_call_timeout << std::endl;
+  // printing call_repeats parameter
+  std::cout << "    parameter 'call_repeats': " << m_call_repeats << std::endl;
+  std::cout << std::endl;
 
   m_fd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (m_fd < 0)
@@ -54,10 +67,11 @@ UDPServer::UDPServer() : m_nh("~"), m_buffer(1024) {
     errnoError("Could not bind socket");
   }
 
-  ROS_INFO("udp_server listening on port %d", port);
+  ROS_INFO("UDP SERVER initialized.");
 }
 
 UDPServer::~UDPServer() {
+  ROS_INFO("UDP SERVER terminated.");
   close(m_fd);
 }
 
@@ -154,6 +168,46 @@ void UDPServer::handlePacket() {
 
   m_buffer.resize(ret);
 
+
+  if (m_buffer.size() < (int)sizeof(ServiceCallAcknowledgement)) {
+    ROS_ERROR("Received short packet of size %lu", m_buffer.size());
+    return;
+  }
+
+  // parse acknowledgement msg
+  if (m_buffer.size() == (int)sizeof(ServiceCallAcknowledgement)) {
+
+    const auto* ack = reinterpret_cast<const ServiceCallAcknowledgement*>(m_buffer.data());
+
+    auto cmp = boost::make_shared<RequestHandler>(ack->timestamp(), ack->counter, "", ros::SerializedMessage(), 0, 0);
+
+    auto it = std::lower_bound(m_requestList.begin(), m_requestList.end(), cmp,
+                               [&](const boost::shared_ptr<RequestHandler>& a, const boost::shared_ptr<RequestHandler>& b) {
+                                 if (a->timestamp < b->timestamp)
+                                   return true;
+                                 else if (a->timestamp > b->timestamp)
+                                   return false;
+
+                                 return a->counter < b->counter;
+                               });
+
+    boost::shared_ptr<RequestHandler> reqHandler;
+    if (it != m_requestList.end()) {
+      reqHandler = *it;
+    }
+
+    if (!reqHandler || reqHandler->timestamp != ack->timestamp() || reqHandler->counter != ack->counter) {
+
+      boost::unique_lock<boost::mutex> lock(reqHandler->mutex);
+      ROS_INFO("[%s]: gotAck", reqHandler->service.c_str());
+      reqHandler->cond_msg_acknowledgement_received.notify_one();
+      return;
+    } else {
+      ROS_ERROR("Received unexpected UDP service packet answer, ignoring");
+      return;
+    }
+  }
+
   if (m_buffer.size() < sizeof(ServiceCallRequest)) {
     ROS_ERROR("Received short packet of size %lu", m_buffer.size());
     return;
@@ -171,7 +225,7 @@ void UDPServer::handlePacket() {
     return;
   }
 
-  auto cmp = boost::make_shared<RequestHandler>(req->timestamp(), req->counter, "", ros::SerializedMessage());
+  auto cmp = boost::make_shared<RequestHandler>(req->timestamp(), req->counter, "", ros::SerializedMessage(), 0, 0);
 
   auto it = std::lower_bound(m_requestList.begin(), m_requestList.end(), cmp,
                              [&](const boost::shared_ptr<RequestHandler>& a, const boost::shared_ptr<RequestHandler>& b) {
@@ -196,7 +250,7 @@ void UDPServer::handlePacket() {
 
     ros::SerializedMessage msg_request(array, req->request_length());
 
-    reqHandler     = boost::make_shared<RequestHandler>(req->timestamp(), req->counter, name, msg_request);
+    reqHandler     = boost::make_shared<RequestHandler>(req->timestamp(), req->counter, name, msg_request, m_call_timeout, m_call_repeats);
     reqHandler->fd = m_fd;
     memcpy(&reqHandler->addr, &addr, sizeof(addr));
     reqHandler->addrLen = msg.msg_namelen;
@@ -370,7 +424,19 @@ void UDPServer::RequestHandler::call() {
 
   calling = false;
 
-  sendResponse();
+  bool gotAck = false;
+  for (int i = 0; i < call_repeats; i++) {
+    sendResponse();
+    boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(call_timeout * 1000);
+    gotAck                           = cond_msg_acknowledgement_received.timed_wait(lock, timeout);
+    if (gotAck) {
+      break;
+    }
+  }
+
+  if (!gotAck) {
+    ROS_ERROR("[%s]: Have not received Ack in timeout!", service.c_str());
+  }
 }
 
 }  // namespace nimbro_service_transport

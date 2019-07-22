@@ -15,67 +15,71 @@
 namespace nimbro_service_transport
 {
 
-class UDPServer
-{
+class UDPServer {
 public:
-	UDPServer();
-	~UDPServer();
+  UDPServer();
+  ~UDPServer();
 
-	void step();
+  void step();
+
 private:
-	void handlePacket();
+  void handlePacket();
 
-	ros::NodeHandle m_nh;
+  ros::NodeHandle m_nh;
 
-	int m_fd;
+  int m_fd;
+  double m_call_timeout;
+  int m_call_repeats;
 
-	std::vector<uint8_t> m_buffer;
-	uint8_t m_ctrlBuf[1024];
+  std::vector<uint8_t> m_buffer;
+  uint8_t              m_ctrlBuf[1024];
 
-	struct RequestHandler
-	{
-		RequestHandler(uint64_t timestamp, uint8_t counter, const std::string& service, const ros::SerializedMessage& request)
-		 : timestamp(timestamp)
-		 , counter(counter)
-		 , service(service)
-		 , request(request)
-		 , calling(false)
-		{}
+  struct RequestHandler
+  {
+    RequestHandler(uint64_t timestamp, uint8_t counter, const std::string& service, const ros::SerializedMessage& request, const double& call_timeout,
+                   const int& call_repeats)
+        : timestamp(timestamp), counter(counter), service(service), request(request), call_timeout(call_timeout), call_repeats(call_repeats), calling(false) {
+    }
 
-		void call();
+    void call();
 
-		void sendResponse();
-		void sendAcknowledgement();
+    void sendResponse();
+    void sendAcknowledgement();
 
-		bool operator<(const RequestHandler& other) const;
+    bool operator<(const RequestHandler& other) const;
 
-		int fd;
-		sockaddr_storage addr;
-		socklen_t addrLen;
+    int              fd;
+    sockaddr_storage addr;
+    socklen_t        addrLen;
 
-		uint64_t timestamp;
-		uint8_t counter;
-		std::string service;
-		ros::SerializedMessage request;
+    uint64_t               timestamp;
+    uint8_t                counter;
+    std::string            service;
+    ros::SerializedMessage request;
 
-		bool calling;
-		boost::thread serviceThread;
+    double call_timeout;
+    int    call_repeats;
 
-		boost::mutex mutex;
-		std::vector<uint8_t> response;
+    bool          calling;
+    boost::thread serviceThread;
 
-		ros::Time receptionTime;
+    boost::mutex         mutex;
+    std::vector<uint8_t> response;
 
-		in_pktinfo in_info;
-		in6_pktinfo in6_info;
+    ros::Time receptionTime;
 
-		bool have_in_pktinfo;
-		bool have_in6_pktinfo;
-	};
+    in_pktinfo  in_info;
+    in6_pktinfo in6_info;
 
-	std::list<boost::shared_ptr<RequestHandler>> m_requestList;
+    bool have_in_pktinfo;
+    bool have_in6_pktinfo;
+
+    boost::condition_variable cond_msg_acknowledgement_received;
+  };
+
+  std::list<boost::shared_ptr<RequestHandler>> m_requestList;
 };
 
-}
+}  // namespace nimbro_service_transport
 
 #endif

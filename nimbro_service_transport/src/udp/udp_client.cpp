@@ -162,14 +162,13 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
 
   auto it = m_requests.insert(m_requests.end(), &record);
 
-  if (send(m_fd, buffer.data(), buffer.size(), 0) != (int)buffer.size()) {
-    ROS_ERROR("[%s] Could not send UDP data: %s", m_remote_hostname.c_str(), strerror(errno));
-    publishStatus(name, header->counter, ServiceStatus::STATUS_CONNECTION_ERROR);
-    return false;
-  }
-
   bool gotAck = false;
   for (int i = 0; i < m_call_repeats; i++) {
+    if (send(m_fd, buffer.data(), buffer.size(), 0) != (int)buffer.size()) {
+      ROS_ERROR("[%s] Could not send UDP data: %s", m_remote_hostname.c_str(), strerror(errno));
+      publishStatus(name, header->counter, ServiceStatus::STATUS_CONNECTION_ERROR);
+      return false;
+    }
     boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_call_timeout * 1000);
     gotAck                           = record.cond_msg_acknowledgement_received.timed_wait(lock, timeout);
     if (gotAck) {
@@ -266,6 +265,7 @@ void UDPClient::handlePacket() {
     boost::unique_lock<boost::mutex> lock(m_mutex);
     for (auto it = m_requests.begin(); it != m_requests.end(); ++it) {
       if (resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter) {
+        ROS_INFO("[%s]: gotAck", m_remote_hostname.c_str());
         (*it)->cond_msg_acknowledgement_received.notify_one();
         return;
       }
@@ -286,8 +286,24 @@ void UDPClient::handlePacket() {
     return;
   }
 
-  /* ROS_WARN("[%s] received data", m_remote_hostname.c_str()); */
+
+  // send acknowledgement for response
+  std::vector<uint8_t> buffer(sizeof(ServiceCallAcknowledgement));
+
+  ServiceCallAcknowledgement* header = reinterpret_cast<ServiceCallAcknowledgement*>(buffer.data());
+
+  header->timestamp = resp->timestamp;
+  header->counter   = resp->counter;
+
   boost::unique_lock<boost::mutex> lock(m_mutex);
+
+  // send acknowledgement
+  if (send(m_fd, buffer.data(), buffer.size(), 0) != (int)buffer.size()) {
+    ROS_ERROR("[%s] Could not send ack UDP data: %s", m_remote_hostname.c_str(), strerror(errno));
+    return;
+  }
+
+  // parse response
   for (auto it = m_requests.begin(); it != m_requests.end(); ++it) {
     if (resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter) {
       boost::shared_array<uint8_t> data(new uint8_t[resp->response_length()]);
@@ -492,12 +508,10 @@ int main(int argc, char** argv) {
   }
 
   std::vector<std::unique_ptr<nimbro_service_transport::UDPClient>> clients;
-  int                                                               i = 0;
-  for (auto const& robot_addr : robot_services) {
-    ROS_INFO("Initializing connection to server: %s", robot_addr.first.c_str());
-    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_names[i], robot_addr.first, robot_services[robot_addr.first],
+  for (auto const& robot_name : robot_name_map) {
+    ROS_INFO("Initializing connection to server: %s", robot_name.second.c_str());
+    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_name.first, robot_name.second, robot_services[robot_name.second],
                                                                             response_timeout, call_timeout, call_repeats));
-    i++;
   }
 
   ros::MultiThreadedSpinner spinner(robot_names.size() + 1);
