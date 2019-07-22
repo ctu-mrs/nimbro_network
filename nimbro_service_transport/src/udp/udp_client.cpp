@@ -36,7 +36,7 @@ public:
     bool call_result = m_client->call(m_name, params);
     if (call_result) {
       ROS_INFO("[%s]: Call was successful", m_name.c_str());
-    }else{
+    } else {
       ROS_ERROR("[%s]: Call error", m_name.c_str());
     }
     return call_result;
@@ -164,6 +164,13 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
   // TODO: Timeout
   boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_timeout * 1000);
 
+  bool gotAck = record.cond_msg_acknowledgement_received.timed_wait(lock, timeout);
+
+  if (!gotAck){
+    ROS_WARN("[%s]: Have not received Ack in timeout!", name.c_str());
+    return false;
+  }
+
   bool gotMsg = record.cond_response_received.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
   m_requests.erase(it);
 
@@ -233,8 +240,24 @@ void UDPClient::handlePacket() {
     throw std::runtime_error(ss.str());
   }
 
-  if (bytes < (int)sizeof(ServiceCallResponse)) {
+  if (bytes < (int)sizeof(ServiceCallAcknowledgement)) {
     ROS_ERROR("[%s] Short response packet, ignoring...", m_remote_hostname.c_str());
+    return;
+  }
+
+  // parse acknowledgement msg
+  if (bytes == (int)sizeof(ServiceCallAcknowledgement)) {
+
+    const auto* resp = reinterpret_cast<const ServiceCallAcknowledgement*>(m_recvBuf.data());
+
+    boost::unique_lock<boost::mutex> lock(m_mutex);
+    for (auto it = m_requests.begin(); it != m_requests.end(); ++it) {
+      if (resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter) {
+        (*it)->cond_msg_acknowledgement_received.notify_one();
+        return;
+      }
+    }
+    ROS_ERROR("[%s] Received unexpected UDP service packet answer, ignoring", m_remote_hostname.c_str());
     return;
   }
 
@@ -242,7 +265,7 @@ void UDPClient::handlePacket() {
     ROS_ERROR("[%s] Short response packet, ignoring...", m_remote_hostname.c_str());
     return;
   }
-  // it can be only ServiceCallResponse
+  // now it can be only ServiceCallResponse
   const auto* resp = reinterpret_cast<const ServiceCallResponse*>(m_recvBuf.data());
 
   if (resp->response_length() + sizeof(ServiceCallResponse) > (size_t)bytes) {
@@ -258,13 +281,14 @@ void UDPClient::handlePacket() {
       memcpy(data.get(), m_recvBuf.data() + sizeof(ServiceCallResponse), resp->response_length());
       (*it)->response = ros::SerializedMessage(data, resp->response_length());
 
+      (*it)->cond_msg_acknowledgement_received.notify_one();
       (*it)->cond_response_received.notify_one();
       return;
     }
   }
 
   ROS_ERROR("[%s] Received unexpected UDP service packet answer, ignoring", m_remote_hostname.c_str());
-}
+}  // namespace nimbro_service_transport
 
 void UDPClient::run() {
   while (ros::ok()) {

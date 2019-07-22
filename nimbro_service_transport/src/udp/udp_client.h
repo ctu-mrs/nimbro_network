@@ -44,6 +44,7 @@ private:
 
     ros::SerializedMessage    response;
     boost::condition_variable cond_response_received;
+    boost::condition_variable cond_msg_acknowledgement_received;
   };
 
   std::list<RequestRecord*> m_requests;
