@@ -45,6 +45,7 @@ private:
 		void call();
 
 		void sendResponse();
+		void sendAcknowledgement();
 
 		bool operator<(const RequestHandler& other) const;
 

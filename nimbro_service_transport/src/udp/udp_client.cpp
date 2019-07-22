@@ -32,12 +32,12 @@ public:
   }
 
   virtual bool call(ros::ServiceCallbackHelperCallParams& params) {
-    ROS_INFO("[%s]: Calling", m_name.c_str());
+    ROS_INFO("[%s]: Calling.", m_name.c_str());
     bool call_result = m_client->call(m_name, params);
     if (call_result) {
-      ROS_INFO("[%s]: Call was successful", m_name.c_str());
+      ROS_INFO("[%s]: Call was successful.", m_name.c_str());
     } else {
-      ROS_ERROR("[%s]: Call error", m_name.c_str());
+      ROS_ERROR("[%s]: Call error.", m_name.c_str());
     }
     return call_result;
   }
@@ -51,8 +51,15 @@ private:
 
 
 UDPClient::UDPClient(const std::string& robot_hostname, const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services,
-                     const double& timeout)
-    : m_nh("~"), m_fd(-1), m_counter(0), m_remote_hostname(robot_hostname), m_remote(robot_addr), m_timeout(timeout) {
+                     const double& response_timeout, const double& call_timeout, const int& call_repeats)
+    : m_nh("~"),
+      m_fd(-1),
+      m_counter(0),
+      m_remote_hostname(robot_hostname),
+      m_remote(robot_addr),
+      m_response_timeout(response_timeout),
+      m_call_timeout(call_timeout),
+      m_call_repeats(call_repeats) {
   m_nh.param("port", m_remotePort, 5000);
 
   std::string portString = boost::lexical_cast<std::string>(m_remotePort);
@@ -161,17 +168,23 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
     return false;
   }
 
-  // TODO: Timeout
-  boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_timeout * 1000);
+  bool gotAck = false;
+  for (int i = 0; i < m_call_repeats; i++) {
+    boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_call_timeout * 1000);
+    gotAck                           = record.cond_msg_acknowledgement_received.timed_wait(lock, timeout);
+    if (gotAck) {
+      break;
+    }
+  }
 
-  bool gotAck = record.cond_msg_acknowledgement_received.timed_wait(lock, timeout);
-
-  if (!gotAck){
-    ROS_WARN("[%s]: Have not received Ack in timeout!", name.c_str());
+  if (!gotAck) {
+    ROS_ERROR("[%s]: Have not received Ack in timeout!", name.c_str());
     return false;
   }
 
-  bool gotMsg = record.cond_response_received.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
+
+  boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_call_timeout * 1000);
+  bool                     gotMsg  = record.cond_response_received.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
   m_requests.erase(it);
 
   if (gotMsg) {
@@ -179,7 +192,7 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
     publishStatus(name, header->counter, ServiceStatus::STATUS_FINISHED_SUCCESS);
     return true;
   } else {
-    ROS_WARN("[%s]: Have not received the response in timeout!", name.c_str());
+    ROS_ERROR("[%s]: Have not received the response in timeout!", name.c_str());
     publishStatus(name, header->counter, ServiceStatus::STATUS_TIMEOUT);
     return false;
   }
@@ -327,8 +340,14 @@ int main(int argc, char** argv) {
   std::vector<std::string> robot_names;
   nh.getParam("network/robot_names", robot_names);
 
-  double timeout;
-  nh.param("timeout", timeout, double(10));
+  double call_timeout;
+  nh.param("call_timeout", call_timeout, double(0.1));
+
+  int call_repeats;
+  nh.param("call_repeats", call_repeats, int(3));
+
+  double response_timeout;
+  nh.param("response_timeout", response_timeout, double(3));
 
   // Initialize & advertise the list of services
   XmlRpc::XmlRpcValue service_list;
@@ -338,8 +357,12 @@ int main(int argc, char** argv) {
   // exclude this robot from the list
   robot_names.erase(std::remove(robot_names.begin(), robot_names.end(), hostname), robot_names.end());
 
-  // printing timeout parameter
-  std::cout << "    parameter 'timeout': " << timeout << std::endl;
+  // printing call_timeout parameter
+  std::cout << "    parameter 'call_timeout': " << call_timeout << std::endl;
+  // printing call_repeats parameter
+  std::cout << "    parameter 'call_repeats': " << call_repeats << std::endl;
+  // printing response_timeout parameter
+  std::cout << "    parameter 'response_timeout': " << response_timeout << std::endl;
 
   // printing robot_names list
   std::string tmp_print_list;
@@ -472,7 +495,8 @@ int main(int argc, char** argv) {
   int                                                               i = 0;
   for (auto const& robot_addr : robot_services) {
     ROS_INFO("Initializing connection to server: %s", robot_addr.first.c_str());
-    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_names[i], robot_addr.first, robot_services[robot_addr.first], timeout));
+    clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_names[i], robot_addr.first, robot_services[robot_addr.first],
+                                                                            response_timeout, call_timeout, call_repeats));
     i++;
   }
 
