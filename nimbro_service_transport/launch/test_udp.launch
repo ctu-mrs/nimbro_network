@@ -1,20 +1,23 @@
 <launch>
 
-  <!-- Service server -->
-  <node name="service_udp_server" pkg="nimbro_service_transport" type="udp_server" output="screen">
-    <param name="port" value="6000" />
-  </node>
-
   <!-- Service client -->
   <node name="service_udp_client" pkg="nimbro_service_transport" type="udp_client" output="screen">
     <param name="port" value="6000" />
-    <param name="timeout" value="3" />
+    <param name="response_timeout" value="3" />
+    <param name="call_timeout" value="0.2" />
+    <param name="call_repeats" value="3" />
     <rosparam>
       network:
         # names of the robots have to match hostnames described in /etc/hosts
-        robot_names: [uav1, uav2]
+        robot_names: [uav60,uav1,uav3]
 
       services:
+        - name: "/*/control_manager/mpc_tracker/fly_to_trajectory_start"
+          type: std_srvs/Trigger 
+        - name: "/*/control_manager/mpc_tracker/start_trajectory_following"
+          type: std_srvs/Trigger 
+        - name: "/*/control_manager/mpc_tracker/set_trajectory"
+          type: mrs_msgs/TrackerTrajectorySrv 
         - name: "/*/control_manager/motors"
           type: std_srvs/SetBool
         - name: "/*/uav_manager/takeoff"
@@ -22,4 +25,11 @@
 
     </rosparam>
 	</node>
+  
+  <!-- Service server -->
+  <node name="service_udp_server" pkg="nimbro_service_transport" type="udp_server" output="screen">
+    <param name="port" value="6000" />
+    <param name="call_timeout" value="0.2" />
+    <param name="call_repeats" value="3" />
+  </node>   
 </launch>

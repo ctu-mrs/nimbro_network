@@ -33,11 +33,13 @@ public:
 
   virtual bool call(ros::ServiceCallbackHelperCallParams& params) {
     ROS_INFO("[%s]: Calling.", m_name.c_str());
+    ros::Time call_time_start = ros::Time::now();
     bool call_result = m_client->call(m_name, params);
+    ros::Duration call_time = ros::Time::now() - call_time_start;
     if (call_result) {
-      ROS_INFO("[%s]: Call was successful.", m_name.c_str());
+      ROS_INFO("[%s]: Call was successful (dt = %.4f sec).", m_name.c_str(), call_time.toSec());
     } else {
-      ROS_ERROR("[%s]: Call error.", m_name.c_str());
+      ROS_ERROR("[%s]: Call error (dt = %.4f sec).", m_name.c_str(), call_time.toSec());
     }
     return call_result;
   }
@@ -265,12 +267,11 @@ void UDPClient::handlePacket() {
     boost::unique_lock<boost::mutex> lock(m_mutex);
     for (auto it = m_requests.begin(); it != m_requests.end(); ++it) {
       if (resp->timestamp() == (*it)->timestamp && resp->counter == (*it)->counter) {
-        ROS_INFO("[%s]: gotAck", m_remote_hostname.c_str());
         (*it)->cond_msg_acknowledgement_received.notify_one();
         return;
       }
     }
-    ROS_ERROR("[%s] Received unexpected UDP service packet answer, ignoring", m_remote_hostname.c_str());
+    ROS_WARN("[%s] Received unexpected UDP service packet answer, ignoring", m_remote_hostname.c_str());
     return;
   }
 

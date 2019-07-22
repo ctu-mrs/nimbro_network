@@ -196,14 +196,13 @@ void UDPServer::handlePacket() {
       reqHandler = *it;
     }
 
-    if (!reqHandler || reqHandler->timestamp != ack->timestamp() || reqHandler->counter != ack->counter) {
+    if (reqHandler && reqHandler->timestamp == ack->timestamp() && reqHandler->counter == ack->counter) {
 
       boost::unique_lock<boost::mutex> lock(reqHandler->mutex);
-      ROS_INFO("[%s]: gotAck", reqHandler->service.c_str());
       reqHandler->cond_msg_acknowledgement_received.notify_one();
       return;
     } else {
-      ROS_ERROR("Received unexpected UDP service packet answer, ignoring");
+      ROS_WARN("Received unexpected UDP service packet answer, ignoring");
       return;
     }
   }
