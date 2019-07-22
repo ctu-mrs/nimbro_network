@@ -317,7 +317,7 @@ void UDPClient::handlePacket() {
     }
   }
 
-  ROS_ERROR("[%s] Received unexpected UDP service packet answer, ignoring", m_remote_hostname.c_str());
+  ROS_WARN("[%s] Received unexpected UDP service packet response, ignoring", m_remote_hostname.c_str());
 }  // namespace nimbro_service_transport
 
 void UDPClient::run() {
