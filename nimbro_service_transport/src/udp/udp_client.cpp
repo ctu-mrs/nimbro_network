@@ -33,9 +33,9 @@ public:
 
   virtual bool call(ros::ServiceCallbackHelperCallParams& params) {
     ROS_INFO("[%s]: Calling.", m_name.c_str());
-    ros::Time call_time_start = ros::Time::now();
-    bool call_result = m_client->call(m_name, params);
-    ros::Duration call_time = ros::Time::now() - call_time_start;
+    ros::Time     call_time_start = ros::Time::now();
+    bool          call_result     = m_client->call(m_name, params);
+    ros::Duration call_time       = ros::Time::now() - call_time_start;
     if (call_result) {
       ROS_INFO("[%s]: Call was successful (dt = %.4f sec).", m_name.c_str(), call_time.toSec());
     } else {
@@ -53,7 +53,7 @@ private:
 
 
 UDPClient::UDPClient(const std::string& robot_hostname, const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services,
-                     const double& response_timeout, const double& call_timeout, const int& call_repeats)
+                     const double& response_timeout, const double& call_timeout, const int& call_repeats, const int& remote_port)
     : m_nh("~"),
       m_fd(-1),
       m_counter(0),
@@ -61,8 +61,8 @@ UDPClient::UDPClient(const std::string& robot_hostname, const std::string& robot
       m_remote(robot_addr),
       m_response_timeout(response_timeout),
       m_call_timeout(call_timeout),
-      m_call_repeats(call_repeats) {
-  m_nh.param("port", m_remotePort, 5000);
+      m_call_repeats(call_repeats),
+      m_remotePort(remote_port) {
 
   std::string portString = boost::lexical_cast<std::string>(m_remotePort);
 
@@ -357,6 +357,9 @@ int main(int argc, char** argv) {
   std::vector<std::string> robot_names;
   nh.getParam("network/robot_names", robot_names);
 
+  int destination_port;
+  nh.param("destination_port", destination_port, 5000);
+
   double call_timeout;
   nh.param("call_timeout", call_timeout, double(0.1));
 
@@ -374,6 +377,8 @@ int main(int argc, char** argv) {
   // exclude this robot from the list
   robot_names.erase(std::remove(robot_names.begin(), robot_names.end(), hostname), robot_names.end());
 
+  // printing destination_port parameter
+  std::cout << "    parameter 'destination_port': " << destination_port << std::endl;
   // printing call_timeout parameter
   std::cout << "    parameter 'call_timeout': " << call_timeout << std::endl;
   // printing call_repeats parameter
@@ -387,7 +392,7 @@ int main(int argc, char** argv) {
     tmp_print_list.append(robot_names.at(i) + std::string(", "));
   }
   tmp_print_list.append(robot_names.back());
-  std::cout << "    parameter 'network/robot_names': " << tmp_print_list.c_str() << std::endl;
+  std::cout << "  parameter 'network/robot_names': " << tmp_print_list.c_str() << std::endl;
 
   // printing service list
   std::cout << "    parameter 'services': ";
@@ -512,7 +517,7 @@ int main(int argc, char** argv) {
   for (auto const& robot_name : robot_name_map) {
     ROS_INFO("Initializing connection to server: %s", robot_name.second.c_str());
     clients.push_back(std::make_unique<nimbro_service_transport::UDPClient>(robot_name.first, robot_name.second, robot_services[robot_name.second],
-                                                                            response_timeout, call_timeout, call_repeats));
+                                                                            response_timeout, call_timeout, call_repeats, destination_port));
   }
 
   ros::MultiThreadedSpinner spinner(robot_names.size() + 1);

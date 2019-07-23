@@ -2,7 +2,7 @@
 
   <!-- Service client -->
   <node name="service_udp_client" pkg="nimbro_service_transport" type="udp_client" output="screen">
-    <param name="port" value="6000" />
+    <param name="destination_port" value="6000" />
     <param name="response_timeout" value="3" />
     <param name="call_timeout" value="0.2" />
     <param name="call_repeats" value="3" />
