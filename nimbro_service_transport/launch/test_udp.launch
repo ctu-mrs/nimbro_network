@@ -6,6 +6,7 @@
     <param name="response_timeout" value="3" />
     <param name="call_timeout" value="0.2" />
     <param name="call_repeats" value="3" />
+    <param name="topic_prefix" value=""/>
     <rosparam>
       network:
         # names of the robots have to match hostnames described in /etc/hosts

@@ -124,7 +124,16 @@ UDPClient::UDPClient(const std::string& robot_hostname, const std::string& robot
     }
   }
 
-  m_pub_status = m_nh.advertise<ServiceStatus>("/network/service_status", 10);
+  std::string topic_prefix;
+  m_nh.param("topic_prefix", topic_prefix, std::string(""));
+
+  std::stringstream topic_name;
+  if (!topic_prefix.empty()) {
+    topic_name << "/" << topic_prefix << "/network/service_status";
+  } else {
+    topic_name << "/network/service_status";
+  }
+  m_pub_status = m_nh.advertise<ServiceStatus>(topic_name.str(), 10);
 
   m_thread = std::make_unique<boost::thread>(boost::bind(&UDPClient::run, this));
   ROS_INFO("Service client initialized.");
