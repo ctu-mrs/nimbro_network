@@ -32,7 +32,7 @@
 namespace nimbro_topic_transport
 {
 
-UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacketsInStatsInterval(0), m_missingPacketsInStatsInterval(0), m_remoteAddrLen(0) {
+UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacketsInStatsInterval(0), m_missingPacketsInStatsInterval(0) {
   ros::NodeHandle private_nh("~");
 
   m_pub_heartbeat = private_nh.advertise<std_msgs::Time>("heartbeat", 1);
@@ -46,6 +46,12 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
     ROS_FATAL("Could not create socket: %s", strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
+
+  char hostnameBuf[256];
+  gethostname(hostnameBuf, sizeof(hostnameBuf));
+  hostnameBuf[sizeof(hostnameBuf) - 1] = 0;
+
+  m_hostname = std::string(hostnameBuf);
 
   int port;
   private_nh.param("port", port, 5050);
@@ -79,20 +85,17 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
     throw std::runtime_error("Please compile with FEC support to enable FEC");
 #endif
 
-  char hostnameBuf[256];
-  gethostname(hostnameBuf, sizeof(hostnameBuf));
-  hostnameBuf[sizeof(hostnameBuf) - 1] = 0;
 
   m_stats.node       = ros::this_node::getName();
   m_stats.protocol   = "UDP";
-  m_stats.host       = hostnameBuf;
+  m_stats.host       = m_hostname.c_str();
   m_stats.local_port = port;
   m_stats.fec        = m_fec;
 
   private_nh.param("label", m_stats.label, std::string());
+
   std::string topic_prefix;
   private_nh.param("topic_prefix", topic_prefix, std::string());
-
 
   std::stringstream topic_name;
   if (!topic_prefix.empty()) {
@@ -275,16 +278,41 @@ void UDPReceiver::run() {
       throw std::runtime_error(strerror(errno));
     }
 
-    if (addrlen != m_remoteAddrLen || memcmp(&addr, &m_remoteAddr, addrlen) != 0) {
+    bool is_msg_from_new_remote = true;
+    for (unsigned long it = 0; it < m_remoteAddr.size(); it++) {
+      if (addrlen == m_remoteAddrLen.at(it) && memcmp(&addr, &m_remoteAddr.at(it), addrlen) == 0) {
+        is_msg_from_new_remote = false;
+        break;
+      }
+    }
+
+    if (addrlen == m_hostAddrLen && memcmp(&addr, &m_hostAddr, addrlen) == 0) {
+      m_receivedBytesInStatsInterval += size;
+      continue;
+    }
+
+
+    if (is_msg_from_new_remote) {
       // Perform reverse lookup
       char nameBuf[256];
       char serviceBuf[256];
 
       ros::WallTime startLookup = ros::WallTime::now();
       if (getnameinfo((sockaddr*)&addr, addrlen, nameBuf, sizeof(nameBuf), serviceBuf, sizeof(serviceBuf), NI_NUMERICSERV) == 0) {
-        ROS_INFO("New remote: %s:%s", nameBuf, serviceBuf);
         m_stats.remote      = nameBuf;
         m_stats.remote_port = atoi(serviceBuf);
+
+        // received msg from this host
+        if (m_hostname.compare(nameBuf) == 0) {
+
+          m_hostAddr    = addr;
+          m_hostAddrLen = addrlen;
+
+          m_receivedBytesInStatsInterval += size;
+          continue;
+        }
+
+        ROS_INFO("Receive msg from new remote: %s:%s", nameBuf, serviceBuf);
       } else {
         char host[NI_MAXHOST];
         if (getnameinfo((sockaddr*)&addr, addrlen, host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0) {
@@ -305,8 +333,9 @@ void UDPReceiver::run() {
             m_stats.remote.c_str());
       }
 
-      m_remoteAddr    = addr;
-      m_remoteAddrLen = addrlen;
+
+      m_remoteAddr.push_back(addr);
+      m_remoteAddrLen.push_back(addrlen);
     }
 
     // 		ROS_DEBUG("packet of size %lu", size);
