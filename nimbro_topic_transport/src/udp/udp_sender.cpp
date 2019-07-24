@@ -162,7 +162,11 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
       ROS_WARN_STREAM("Ignoring 'latch' flag at UDP topic " << ((std::string)list[i]["name"]).c_str() << " (UDP topics can't be latched).");
 
     std::stringstream topic_name;
-    topic_name << "/" << topic_prefix << "/" << std::string(list[i]["name"]);
+    if (!topic_prefix.empty()) {
+      topic_name << "/" << topic_prefix << "/" << std::string(list[i]["name"]);
+    } else {
+      topic_name << std::string(list[i]["name"]);
+    }
     TopicSender* sender = new TopicSender(this, &private_nh, topic_name.str(), rate, resend, flags, enabled, type);
 
     sender->setCompression(compression, compressionLevel);
@@ -214,7 +218,13 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
 
   private_nh.param("label", m_stats.label, std::string());
 
-  m_pub_stats = private_nh.advertise<nimbro_topic_transport::SenderStats>("sender_stats", 1);
+  std::stringstream topic_name;
+  if (!topic_prefix.empty()) {
+    topic_name << "/" << topic_prefix << "/network/sender_stats";
+  } else {
+    topic_name << "/network/sender_stats";
+  }
+  m_pub_stats = private_nh.advertise<nimbro_topic_transport::SenderStats>(topic_name.str(), 1);
 
   // Start periodic statistics timer.
   m_statsInterval = ros::WallDuration(2.0);

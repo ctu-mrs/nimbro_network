@@ -90,13 +90,19 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
   m_stats.fec        = m_fec;
 
   private_nh.param("label", m_stats.label, std::string());
+  std::string topic_prefix;
+  private_nh.param("topic_prefix", topic_prefix, std::string());
 
-  m_pub_stats     = private_nh.advertise<ReceiverStats>("receiver_stats", 1);
+
+  std::stringstream topic_name;
+  if (!topic_prefix.empty()) {
+    topic_name << "/" << topic_prefix << "/network/receiver_stats";
+  } else {
+    topic_name << "/network/receiver_stats";
+  }
+  m_pub_stats     = private_nh.advertise<ReceiverStats>(topic_name.str(), 1);
   m_statsInterval = ros::WallDuration(2.0);
   m_statsTimer    = private_nh.createWallTimer(m_statsInterval, boost::bind(&UDPReceiver::updateStats, this));
-
-  private_nh.param("topic_prefix", m_topicPrefix, std::string());
-  private_nh.param("remove_topic_prefix", m_removeTopicPrefix, false);
 }
 
 UDPReceiver::~UDPReceiver() {
@@ -186,10 +192,6 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
     }
 
     std::string t = header->topic_name;
-    if (!m_removeTopicPrefix)
-      t = m_topicPrefix + header->topic_name;
-    else
-      t = t.substr(m_topicPrefix.length());
 
     if (m_keepCompressed && compressed) {
       // If we are requested to keep the messages compressed, we advertise our compressed msg type
