@@ -33,7 +33,7 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
 
   // | ------------------- loading parameters ------------------- |
   mrs_lib::ParamLoader param_loader(private_nh, "TOPIC_SENDER");
-    ROS_FATAL("[TOPIC_SENDER]: Could not create socket: %s", strerror(errno));
+  ROS_FATAL("[TOPIC_SENDER]: Could not create socket: %s", strerror(errno));
   param_loader.load_param("relay_mode", m_relayMode, false);
   std::string dest_host;
   param_loader.load_param("destination_addr", dest_host, std::string("localhost"));
