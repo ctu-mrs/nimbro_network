@@ -23,6 +23,7 @@
 #include <signal.h>
 
 #include <nimbro_topic_transport/SenderStats.h>
+#include <mrs_lib/ParamLoader.h>
 
 namespace nimbro_topic_transport
 {
@@ -30,14 +31,14 @@ namespace nimbro_topic_transport
 UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   ros::NodeHandle private_nh("~");
 
-  // Get ROS parameters
-  private_nh.param("relay_mode", m_relayMode, false);
-
+  // | ------------------- loading parameters ------------------- |
+  mrs_lib::ParamLoader param_loader(private_nh, "TOPIC_SENDER");
+    ROS_FATAL("[TOPIC_SENDER]: Could not create socket: %s", strerror(errno));
+  param_loader.load_param("relay_mode", m_relayMode, false);
   std::string dest_host;
-  private_nh.param("destination_addr", dest_host, std::string("localhost"));
-
+  param_loader.load_param("destination_addr", dest_host, std::string("localhost"));
   int dest_port;
-  private_nh.param("destination_port", dest_port, 5050);
+  param_loader.load_param("destination_port", dest_port, 5050);
 
   std::string dest_port_str = boost::lexical_cast<std::string>(dest_port);
 
@@ -45,19 +46,19 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   // note: getaddrinfo() also accepts direct IP addresses
   addrinfo* info = 0;
   if (getaddrinfo(dest_host.c_str(), dest_port_str.c_str(), 0, &info) != 0 || !info) {
-    ROS_FATAL("Could not lookup destination address\n '%s': %s", dest_host.c_str(), strerror(errno));
+    ROS_FATAL("[TOPIC_SENDER]: Could not lookup destination address\n '%s': %s", dest_host.c_str(), strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
 
   m_fd = socket(info->ai_family, SOCK_DGRAM, 0);
   if (m_fd < 0) {
-    ROS_FATAL("Could not create socket: %s", strerror(errno));
+    ROS_FATAL("[TOPIC_SENDER]: Could not create socket: %s", strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
 
   int on = 1;
   if (setsockopt(m_fd, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) != 0) {
-    ROS_FATAL("Could not enable SO_BROADCAST flag: %s", strerror(errno));
+    ROS_FATAL("[TOPIC_SENDER]: Could not enable SO_BROADCAST flag: %s", strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
 
@@ -68,8 +69,9 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
 
   // If we have a specified source port, bind to it.
   if (private_nh.hasParam("source_port")) {
-    if (!private_nh.getParam("source_port", source_port)) {
-      ROS_FATAL("Invalid source_port");
+    param_loader.load_param("source_port", source_port);
+    if (!param_loader.loaded_successfully()) {
+      ROS_FATAL("[TOPIC_SENDER]: Invalid source_port");
       throw std::runtime_error("Invalid source port");
     }
 
@@ -84,12 +86,12 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
 
     addrinfo* localInfo = 0;
     if (getaddrinfo(NULL, source_port_str.c_str(), &hints, &localInfo) != 0 || !localInfo) {
-      ROS_FATAL("Could not get local address: %s", strerror(errno));
+      ROS_FATAL("[TOPIC_SENDER]: Could not get local address: %s", strerror(errno));
       throw std::runtime_error("Could not get local address");
     }
 
     if (bind(m_fd, localInfo->ai_addr, localInfo->ai_addrlen) != 0) {
-      ROS_FATAL("Could not bind to source port: %s", strerror(errno));
+      ROS_FATAL("[TOPIC_SENDER]: Could not bind to source port: %s", strerror(errno));
       throw std::runtime_error(strerror(errno));
     }
 
@@ -99,15 +101,14 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   freeaddrinfo(info);
 
   std::string topic_prefix;
-  private_nh.param("topic_prefix", topic_prefix, std::string(""));
+  param_loader.load_param("topic_prefix", topic_prefix, std::string(""));
 
   // Do we enable FEC?
-  private_nh.param("fec", m_fec, 0.0);
+  param_loader.load_param("fec", m_fec, 0.0);
 
   // Setup the individual topic senders.
   XmlRpc::XmlRpcValue list;
-  private_nh.getParam("topics", list);
-
+  param_loader.load_param("topics", list);
   ROS_ASSERT(list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
   for (int32_t i = 0; i < list.size(); ++i) {
@@ -159,7 +160,7 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
       type = (std::string)(list[i]["type"]);
 
     if (list[i].hasMember("latch"))
-      ROS_WARN_STREAM("Ignoring 'latch' flag at UDP topic " << ((std::string)list[i]["name"]).c_str() << " (UDP topics can't be latched).");
+      ROS_WARN_STREAM("[TOPIC_SENDER]: Ignoring 'latch' flag at UDP topic " << ((std::string)list[i]["name"]).c_str() << " (UDP topics can't be latched).");
 
     std::stringstream topic_name;
     if (!topic_prefix.empty()) {
@@ -179,17 +180,22 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
     m_senders.push_back(sender);
   }
 
-  private_nh.param("duplicate_first_packet", m_duplicateFirstPacket, false);
+  param_loader.load_param("duplicate_first_packet", m_duplicateFirstPacket, false);
 
   // If enabled, start relay control thread.
   if (m_relayMode) {
     double target_bitrate;
-    if (!private_nh.getParam("relay_target_bitrate", target_bitrate)) {
+
+    param_loader.load_param("relay_target_bitrate", target_bitrate);
+    if (!param_loader.loaded_successfully()) {
       throw std::runtime_error("relay mode needs relay_target_bitrate param");
     }
 
+    if (!private_nh.getParam("relay_target_bitrate", target_bitrate)) {
+    }
+
     double relay_control_rate;
-    private_nh.param("relay_control_rate", relay_control_rate, 100.0);
+    param_loader.load_param("relay_control_rate", relay_control_rate, 100.0);
 
     m_relayTokens        = 0;
     m_relayIndex         = 0;
@@ -199,7 +205,7 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
     m_relayRate             = relay_control_rate;
     m_relayThread           = boost::thread(boost::bind(&UDPSender::relay, this));
 
-    ROS_INFO("udp_sender: relay mode configured with control rate %f, target bitrate %f bit/s and token increment %d", relay_control_rate, target_bitrate,
+    ROS_INFO("[TOPIC_SENDER]: relay mode configured with control rate %f, target bitrate %f bit/s and token increment %d", relay_control_rate, target_bitrate,
              m_relayTokensPerStep);
   }
 
@@ -216,7 +222,15 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   m_stats.source_port      = source_port;
   m_stats.fec              = m_fec != 0.0;
 
-  private_nh.param("label", m_stats.label, std::string());
+  param_loader.load_param("label", m_stats.label, std::string());
+
+  // | ----------------------- finish loading ---------------------- |
+
+  if (!param_loader.loaded_successfully()) {
+    ROS_ERROR("[TOPIC_SENDER]: Could not load all parameters!");
+    ros::shutdown();
+    return;
+  }
 
   std::stringstream topic_name;
   if (!topic_prefix.empty()) {
@@ -230,6 +244,8 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   m_statsInterval = ros::WallDuration(2.0);
   m_statsTimer    = private_nh.createWallTimer(m_statsInterval, boost::bind(&UDPSender::updateStats, this));
   m_statsTimer.start();
+
+  ROS_WARN("[TOPIC_SENDER]: UDP sender is ready");
 }
 
 UDPSender::~UDPSender() {
@@ -261,7 +277,7 @@ bool UDPSender::send(const void* data, uint32_t size, const std::string& topic) 
 
 bool UDPSender::internalSend(const void* data, uint32_t size, const std::string& topic) {
   if (sendto(m_fd, data, size, 0, (sockaddr*)&m_addr, m_addrLen) != size) {
-    ROS_ERROR("Could not send data of size %d: %s", size, strerror(errno));
+    ROS_ERROR("[TOPIC_SENDER]: Could not send data of size %d: %s", size, strerror(errno));
     return false;
   }
 
@@ -275,14 +291,14 @@ bool UDPSender::internalSend(const void* data, uint32_t size, const std::string&
 void UDPSender::relay() {
   ros::WallRate rate(m_relayRate);
 
-  ROS_INFO("Relay thread starting...");
+  ROS_INFO("[TOPIC_SENDER]: Relay thread starting...");
 
   while (!m_relayThreadShouldExit) {
     // New tokens! Bound to 100*m_relayTokensPerStep to prevent token buildup.
     m_relayTokens = std::min<uint64_t>(100 * m_relayTokensPerStep, m_relayTokens + m_relayTokensPerStep);
 
     if (m_senders.empty())
-      throw std::runtime_error("No senders configured");
+      throw std::runtime_error("[TOPIC_SENDER]: No senders configured");
 
     // While we have enough token, send something!
     while (1) {
@@ -315,7 +331,7 @@ void UDPSender::relay() {
         break;
 
       if (!internalSend(packet.data(), packet.size(), topic)) {
-        ROS_ERROR("Could not send packet");
+        ROS_ERROR("[TOPIC_SENDER]: Could not send packet");
         break;
       }
 
@@ -328,7 +344,7 @@ void UDPSender::relay() {
     rate.sleep();
   }
 
-  ROS_INFO("Relay thread exiting...");
+  ROS_INFO("[TOPIC_SENDER]: Relay thread exiting...");
 }
 
 void UDPSender::updateStats() {

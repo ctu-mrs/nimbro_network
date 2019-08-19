@@ -15,6 +15,7 @@
     <depend>rqt_gui_cpp</depend>
     <depend>std_msgs</depend>
     <depend>topic_tools</depend>
+    <depend>mrs_lib</depend>
 
     <build_depend>qtbase5-dev</build_depend>
 

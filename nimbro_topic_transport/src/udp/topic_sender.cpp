@@ -68,7 +68,7 @@ TopicSender::TopicSender(UDPSender* sender, ros::NodeHandle* nh, const std::stri
 }
 
 TopicSender::~TopicSender() {
-  ROS_DEBUG("Topic '%s': Sent %d messages", m_topicName.c_str(), m_msgCounter);
+  ROS_DEBUG("[TOPIC_SENDER]: Topic '%s': Sent %d messages", m_topicName.c_str(), m_msgCounter);
 }
 
 void TopicSender::send() {
@@ -82,7 +82,7 @@ void TopicSender::send() {
     if ((m_compression != COMPRESSION_NONE) && m_lastData->getDataType() == "nimbro_topic_transport/CompressedMsg") {
       CompressedMsg::Ptr compressed = m_lastData->instantiate<CompressedMsg>();
       if (!compressed) {
-        ROS_ERROR("Could not instantiate CompressedMsg");
+        ROS_ERROR("[TOPIC_SENDER]: Could not instantiate CompressedMsg");
         return;
       }
 
@@ -109,7 +109,7 @@ void TopicSender::send() {
 
           m_bufFlags |= UDP_FLAG_COMPRESSED;
         } else {
-          ROS_ERROR("Could not compress data, sending uncompressed");
+          ROS_ERROR("[TOPIC_SENDER]: Could not compress data, sending uncompressed");
         }
       } else if (m_compression == COMPRESSION_ZSTD) {
 #if WITH_ZSTD
@@ -123,14 +123,14 @@ void TopicSender::send() {
 
           m_bufFlags |= UDP_FLAG_ZSTD;
         } else {
-          ROS_ERROR("Could not compress data with ZSTD, sending uncompressed");
+          ROS_ERROR("[TOPIC_SENDER]: Could not compress data with ZSTD, sending uncompressed");
         }
 #else
-        ROS_ERROR("ZSTD compression requested, but I have no ZSTD support. Sending uncompressed...");
+        ROS_ERROR("[TOPIC_SENDER]: ZSTD compression requested, but I have no ZSTD support. Sending uncompressed...");
 #endif
       }
 
-      ROS_DEBUG("Compressed message on topic '%s' from %lu to %lu (%.2f%%)", m_topicName.c_str(), originalSize, m_buf.size(),
+      ROS_DEBUG("[TOPIC_SENDER]: Compressed message on topic '%s' from %lu to %lu (%.2f%%)", m_topicName.c_str(), originalSize, m_buf.size(),
                 100.0f * ((float)m_buf.size()) / ((float)originalSize));
 
       std::string md5 = m_lastData->getMD5Sum();
@@ -180,11 +180,11 @@ void TopicSender::sendWithFEC() {
     symbolSize    = FECPacket::MaxDataSize;
   }
 
-  ROS_DEBUG("dataSize: %lu, symbol size: %lu, sourceSymbols: %lu", dataSize, symbolSize, sourceSymbols);
+  ROS_DEBUG("[TOPIC_SENDER]: dataSize: %lu, symbol size: %lu, sourceSymbols: %lu", dataSize, symbolSize, sourceSymbols);
 
   uint64_t packetSize = sizeof(FECPacket::Header) + symbolSize;
 
-  ROS_DEBUG("=> packetSize: %lu", packetSize);
+  ROS_DEBUG("[TOPIC_SENDER]: => packetSize: %lu", packetSize);
 
   uint64_t repairSymbols = std::ceil(m_sender->fec() * sourceSymbols);
 
@@ -193,10 +193,10 @@ void TopicSender::sendWithFEC() {
   of_session_t* ses       = 0;
   uint32_t      prng_seed = rand();
   if (sourceSymbols >= MIN_PACKETS_LDPC) {
-    ROS_DEBUG("%s: Choosing LDPC-Staircase codec", m_topicName.c_str());
+    ROS_DEBUG("[TOPIC_SENDER]: %s: Choosing LDPC-Staircase codec", m_topicName.c_str());
 
     if (of_create_codec_instance(&ses, OF_CODEC_LDPC_STAIRCASE_STABLE, OF_ENCODER, 1) != OF_STATUS_OK) {
-      ROS_ERROR("%s: Could not create LDPC codec instance", m_topicName.c_str());
+      ROS_ERROR("[TOPIC_SENDER]: %s: Could not create LDPC codec instance", m_topicName.c_str());
       return;
     }
 
@@ -207,18 +207,18 @@ void TopicSender::sendWithFEC() {
     params.prng_seed              = prng_seed;
     params.N1                     = 7;
 
-    ROS_DEBUG("LDPC seed: 7, 0x%X", params.prng_seed);
+    ROS_DEBUG("[TOPIC_SENDER]: LDPC seed: 7, 0x%X", params.prng_seed);
 
     if (of_set_fec_parameters(ses, (of_parameters_t*)&params) != OF_STATUS_OK) {
-      ROS_ERROR("%s: Could not set FEC parameters", m_topicName.c_str());
+      ROS_ERROR("[TOPIC_SENDER]: %s: Could not set FEC parameters", m_topicName.c_str());
       of_release_codec_instance(ses);
       return;
     }
   } else {
-    ROS_DEBUG("%s: Choosing Reed-Solomon codec", m_topicName.c_str());
+    ROS_DEBUG("[TOPIC_SENDER]: %s: Choosing Reed-Solomon codec", m_topicName.c_str());
 
     if (of_create_codec_instance(&ses, OF_CODEC_REED_SOLOMON_GF_2_M_STABLE, OF_ENCODER, 0) != OF_STATUS_OK) {
-      ROS_ERROR("%s: Could not create REED_SOLOMON codec instance", m_topicName.c_str());
+      ROS_ERROR("[TOPIC_SENDER]: %s: Could not create REED_SOLOMON codec instance", m_topicName.c_str());
       return;
     }
 
@@ -229,7 +229,7 @@ void TopicSender::sendWithFEC() {
     params.m                      = 8;
 
     if (of_set_fec_parameters(ses, (of_parameters_t*)&params) != OF_STATUS_OK) {
-      ROS_ERROR("%s: Could not set FEC parameters", m_topicName.c_str());
+      ROS_ERROR("[TOPIC_SENDER]: %s: Could not set FEC parameters", m_topicName.c_str());
       of_release_codec_instance(ses);
       return;
     }
@@ -268,13 +268,13 @@ void TopicSender::sendWithFEC() {
 
       strncpy(msgHeader->topic_name, m_topicName.c_str(), sizeof(msgHeader->topic_name));
       if (msgHeader->topic_name[sizeof(msgHeader->topic_name) - 1] != 0) {
-        ROS_ERROR("Topic '%s' is too long. Please shorten the name.", m_topicName.c_str());
+        ROS_ERROR("[TOPIC_SENDER]: Topic '%s' is too long. Please shorten the name.", m_topicName.c_str());
         msgHeader->topic_name[sizeof(msgHeader->topic_name) - 1] = 0;
       }
 
       strncpy(msgHeader->topic_type, m_topicType.c_str(), sizeof(msgHeader->topic_type));
       if (msgHeader->topic_type[sizeof(msgHeader->topic_type) - 1] != 0) {
-        ROS_ERROR("Topic type '%s' is too long. Please shorten the name.", m_topicType.c_str());
+        ROS_ERROR("[TOPIC_SENDER]: Topic type '%s' is too long. Please shorten the name.", m_topicType.c_str());
         msgHeader->topic_type[sizeof(msgHeader->topic_type) - 1] = 0;
       }
 
@@ -282,7 +282,7 @@ void TopicSender::sendWithFEC() {
         msgHeader->topic_md5[i] = m_md5[i];
 
       if (padding > 0xFFFF) {
-        ROS_ERROR("Padding size is too large: %lu", padding);
+        ROS_ERROR("[TOPIC_SENDER]: Padding size is too large: %lu", padding);
         std::abort();
       }
       msgHeader->padding = padding;
@@ -318,7 +318,7 @@ void TopicSender::sendWithFEC() {
   }
   for (uint64_t i = sourceSymbols; i < sourceSymbols + repairSymbols; ++i) {
     if (of_build_repair_symbol(ses, symbols.data(), i) != OF_STATUS_OK) {
-      ROS_ERROR("%s: Could not build repair symbol", m_topicName.c_str());
+      ROS_ERROR("[TOPIC_SENDER]: %s: Could not build repair symbol", m_topicName.c_str());
       of_release_codec_instance(ses);
       return;
     }
@@ -335,13 +335,13 @@ void TopicSender::sendWithFEC() {
   std::mt19937 mt(seed);
   std::shuffle(packetOrder.begin(), packetOrder.end(), mt);
 
-  ROS_DEBUG("Sending %d packets", (int)packetOrder.size());
+  ROS_DEBUG("[TOPIC_SENDER]: Sending %d packets", (int)packetOrder.size());
   for (unsigned int idx : packetOrder) {
     if (!m_sender->send(packetBuffer.data() + idx * packetSize, packetSize, m_topicName))
       return;
   }
 #else
-  throw std::runtime_error("Forward error correction requested, but I was not compiled with FEC support...");
+  throw std::runtime_error("[TOPIC_SENDER]: Forward error correction requested, but I was not compiled with FEC support...");
 #endif
 }
 
@@ -364,13 +364,13 @@ void TopicSender::sendWithoutFEC() {
 
   strncpy(first->header.topic_name, m_topicName.c_str(), sizeof(first->header.topic_name));
   if (first->header.topic_name[sizeof(first->header.topic_name) - 1] != 0) {
-    ROS_ERROR("Topic '%s' is too long. Please shorten the name.", m_topicName.c_str());
+    ROS_ERROR("[TOPIC_SENDER]: Topic '%s' is too long. Please shorten the name.", m_topicName.c_str());
     first->header.topic_name[sizeof(first->header.topic_name) - 1] = 0;
   }
 
   strncpy(first->header.topic_type, m_topicType.c_str(), sizeof(first->header.topic_type));
   if (first->header.topic_type[sizeof(first->header.topic_type) - 1] != 0) {
-    ROS_ERROR("Topic type '%s' is too long. Please shorten the name.", m_topicType.c_str());
+    ROS_ERROR("[TOPIC_SENDER]: Topic type '%s' is too long. Please shorten the name.", m_topicType.c_str());
     first->header.topic_type[sizeof(first->header.topic_type) - 1] = 0;
   }
 

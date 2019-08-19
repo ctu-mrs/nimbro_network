@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   rqt_gui_cpp
   std_msgs
   topic_tools
+  mrs_lib
 )
 
 add_message_files(FILES ServiceStatus.msg)

@@ -16,7 +16,7 @@ namespace nimbro_service_transport
 class UDPClient {
 public:
   UDPClient(const std::string& robot_hostname, const std::string& robot_addr, std::map<std::string, std::vector<std::string>>& services,
-            const double& response_timeout, const double& call_timeout, const int& call_repeats, const int& remote_port);
+            const double& response_timeout, const double& call_timeout, const int& call_repeats, const int& remote_port, const std::string &topic_prefix);
   virtual ~UDPClient();
 
   bool call(const std::string& name, ros::ServiceCallbackHelperCallParams& params);
@@ -58,6 +58,7 @@ private:
   std::string m_remote_hostname;
   int         m_remotePort;
   std::string m_host;
+  std::string m_topic_prefix;
 
   ros::Publisher m_pub_status;
 

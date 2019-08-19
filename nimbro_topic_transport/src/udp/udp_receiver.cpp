@@ -22,6 +22,7 @@
 #include "../topic_info.h"
 
 #include <nimbro_topic_transport/CompressedMsg.h>
+#include <mrs_lib/ParamLoader.h>
 
 #if WITH_PLOTTING
 #include <plot_msgs/Plot.h>
@@ -43,9 +44,13 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
 
   m_fd = socket(AF_INET, SOCK_DGRAM, 0);
   if (m_fd < 0) {
-    ROS_FATAL("Could not create socket: %s", strerror(errno));
+    ROS_FATAL("[TOPIC_RECEIVER]: Could not create socket: %s", strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
+
+  // | ------------------- loading parameters ------------------- |
+  mrs_lib::ParamLoader param_loader(private_nh, "TOPIC_RECEIVER");
+  ROS_INFO("[TOPIC_RECEIVER]: Loading parameters: ");
 
   char hostnameBuf[256];
   gethostname(hostnameBuf, sizeof(hostnameBuf));
@@ -54,31 +59,29 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
   m_hostname = std::string(hostnameBuf);
 
   int port;
-  private_nh.param("port", port, 5050);
+  param_loader.load_param("port", port, 5050);
 
   sockaddr_in addr;
   addr.sin_family      = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_port        = htons(port);
 
-  ROS_INFO("Binding to :%d", port);
-
   if (bind(m_fd, (sockaddr*)&addr, sizeof(addr)) != 0) {
-    ROS_FATAL("Could not bind socket: %s", strerror(errno));
+    ROS_FATAL("[TOPIC_RECEIVER]: Could not bind socket: %s", strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
 
   int on = 1;
   if (setsockopt(m_fd, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) != 0) {
-    ROS_FATAL("Could not set broadcast flag: %s", strerror(errno));
+    ROS_FATAL("[TOPIC_RECEIVER]: Could not set broadcast flag: %s", strerror(errno));
     throw std::runtime_error(strerror(errno));
   }
 
-  private_nh.param("drop_repeated_msgs", m_dropRepeatedMessages, true);
-  private_nh.param("warn_drop_incomplete", m_warnDropIncomplete, true);
-  private_nh.param("keep_compressed", m_keepCompressed, false);
+  param_loader.load_param("drop_repeated_msgs", m_dropRepeatedMessages, true);
+  param_loader.load_param("warn_drop_incomplete", m_warnDropIncomplete, true);
+  param_loader.load_param("keep_compressed", m_keepCompressed, false);
 
-  private_nh.param("fec", m_fec, false);
+  param_loader.load_param("fec", m_fec, false);
 
 #if !(WITH_OPENFEC)
   if (m_fec)
@@ -92,10 +95,18 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
   m_stats.local_port = port;
   m_stats.fec        = m_fec;
 
-  private_nh.param("label", m_stats.label, std::string());
+  param_loader.load_param("label", m_stats.label, std::string());
 
   std::string topic_prefix;
-  private_nh.param("topic_prefix", topic_prefix, std::string());
+  param_loader.load_param("topic_prefix", topic_prefix, std::string());
+
+  // | ----------------------- finish loading ---------------------- |
+
+  if (!param_loader.loaded_successfully()) {
+    ROS_ERROR("[TOPIC_RECEIVER]: Could not load all parameters!");
+    ros::shutdown();
+    return;
+  }
 
   std::stringstream topic_name;
   if (!topic_prefix.empty()) {
@@ -123,7 +134,8 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
   header->topic_type[sizeof(header->topic_type) - 1] = 0;
   header->topic_name[sizeof(header->topic_name) - 1] = 0;
 
-  ROS_DEBUG("Got a packet of type %s, topic %s, (msg id %d), size %d", header->topic_type, header->topic_name, msg->id, (int)msg->payload.size());
+  ROS_DEBUG("[TOPIC_RECEIVER]: Got a packet of type %s, topic %s, (msg id %d), size %d", header->topic_type, header->topic_name, msg->id,
+            (int)msg->payload.size());
 
   // Find topic
   TopicMap::iterator topic_it = m_topics.find(header->topic_name);
@@ -178,11 +190,11 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
     topic->md5_str = topic_info::getMd5Sum(header->topic_type);
 
     if (topic->msg_def.empty() || topic->md5_str.size() != 8 * 4) {
-      ROS_ERROR("Could not find msg type '%s', please make sure msg definitions are up to date", header->topic_type);
+      ROS_ERROR("[TOPIC_RECEIVER]: Could not find msg type '%s', please make sure msg definitions are up to date", header->topic_type);
       return;
     }
 
-    ROS_INFO("Received first message on topic '%s'", header->topic_name);
+    ROS_INFO("[TOPIC_RECEIVER]: Received first message on topic '%s'", header->topic_name);
     for (int i = 0; i < 4; ++i) {
       std::string md5_part = topic->md5_str.substr(8 * i, 8);
       uint32_t    md5_num  = strtoll(md5_part.c_str(), 0, 16);
@@ -190,7 +202,7 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
     }
 
     if (memcmp(topic->md5, header->topic_md5, sizeof(topic->md5)) != 0) {
-      ROS_ERROR("Invalid md5 sum for topic type '%s', please make sure msg definitions are up to date", header->topic_type);
+      ROS_ERROR("[TOPIC_RECEIVER]: Invalid md5 sum for topic type '%s', please make sure msg definitions are up to date", header->topic_type);
       return;
     }
 
@@ -212,7 +224,7 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
   }
 
   if (compressed && m_keepCompressed) {
-    ROS_DEBUG("publishing compressed message as-is");
+    ROS_DEBUG("[TOPIC_RECEIVER]: publishing compressed message as-is");
     CompressedMsgPtr compressed(new CompressedMsg);
     compressed->type = header->topic_type;
     memcpy(compressed->md5.data(), topic->md5, sizeof(topic->md5));
@@ -221,12 +233,12 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
 
     topic->publishCompressed(compressed);
   } else if (compressed) {
-    ROS_DEBUG("decompressing, flags: %d, msg->header.flags: %d", (int)header->flags, (int)msg->header.flags);
+    ROS_DEBUG("[TOPIC_RECEIVER]: decompressing, flags: %d, msg->header.flags: %d", (int)header->flags, (int)msg->header.flags);
     auto msgPtr = boost::make_shared<Message>(*msg);
-    ROS_DEBUG("msgPtr->header.flags: %d", (int)msgPtr->header.flags);
+    ROS_DEBUG("[TOPIC_RECEIVER]: msgPtr->header.flags: %d", (int)msgPtr->header.flags);
     topic->takeForDecompression(msgPtr);
   } else {
-    ROS_DEBUG("publishing non-compressed message directly");
+    ROS_DEBUG("[TOPIC_RECEIVER]: publishing non-compressed message directly");
     boost::shared_ptr<topic_tools::ShapeShifter> shapeShifter(new topic_tools::ShapeShifter);
     shapeShifter->morph(topic->md5_str, header->topic_type, topic->msg_def, "");
 
@@ -241,7 +253,7 @@ void UDPReceiver::handleFinishedMessage(Message* msg, HeaderType* header) {
 void UDPReceiver::run() {
   std::vector<uint8_t> buf;
 
-  ROS_INFO("UDP receiver ready");
+  ROS_WARN("[TOPIC_RECEIVER]: UDP receiver is ready");
   while (1) {
     ros::spinOnce();
 
@@ -262,7 +274,7 @@ void UDPReceiver::run() {
       if (errno == EINTR || errno == EAGAIN)
         continue;
 
-      ROS_FATAL("Could not select(): %s", strerror(errno));
+      ROS_FATAL("[TOPIC_RECEIVER]: Could not select(): %s", strerror(errno));
       throw std::runtime_error(strerror(errno));
     }
     if (ret == 0)
@@ -274,7 +286,7 @@ void UDPReceiver::run() {
     ssize_t size = recvfrom(m_fd, buf.data(), buf.size(), 0, (sockaddr*)&addr, &addrlen);
 
     if (size < 0) {
-      ROS_FATAL("Could not recv(): %s", strerror(errno));
+      ROS_FATAL("[TOPIC_RECEIVER]: Could not recv(): %s", strerror(errno));
       throw std::runtime_error(strerror(errno));
     }
 
@@ -312,13 +324,13 @@ void UDPReceiver::run() {
           continue;
         }
 
-        ROS_INFO("Receive msg from new remote: %s:%s", nameBuf, serviceBuf);
+        ROS_INFO("[TOPIC_RECEIVER]: Receive msg from new remote: %s:%s", nameBuf, serviceBuf);
       } else {
         char host[NI_MAXHOST];
         if (getnameinfo((sockaddr*)&addr, addrlen, host, sizeof(host), NULL, 0, NI_NUMERICHOST) == 0) {
-          ROS_ERROR("Could not resolve remote address '%s' to name", host);
+          ROS_ERROR("[TOPIC_RECEIVER]: Could not resolve remote address '%s' to name", host);
         } else
-          ROS_ERROR("Could not resolve remote address to name");
+          ROS_ERROR("[TOPIC_RECEIVER]: Could not resolve remote address to name");
         m_stats.remote      = "unknown";
         m_stats.remote_port = -1;
       }
@@ -328,7 +340,7 @@ void UDPReceiver::run() {
       // what is going on)
       if (endLookup - startLookup > ros::WallDuration(1.0)) {
         ROS_WARN(
-            "Reverse address lookup took more than a second. "
+            "[TOPIC_RECEIVER]: Reverse address lookup took more than a second. "
             "Consider adding '%s' to /etc/hosts",
             m_stats.remote.c_str());
       }
@@ -434,11 +446,12 @@ void UDPReceiver::pruneMessages() {
 
 #if WITH_OPENFEC
       if (msg.decoder) {
-        ROS_WARN("Dropping FEC message %d (%u/%u symbols)", msg.id, msg.received_symbols, msg.params->nb_source_symbols);
+        ROS_WARN("[TOPIC_RECEIVER]: Dropping FEC message %d (%u/%u symbols)", msg.id, msg.received_symbols, msg.params->nb_source_symbols);
       } else
 #endif
       {
-        ROS_WARN("Dropping message %d, %.2f%% of fragments received (%d/%d)", msg.id, 100.0 * received / num_fragments, received, num_fragments);
+        ROS_WARN("[TOPIC_RECEIVER]: Dropping message %d, %.2f%% of fragments received (%d/%d)", msg.id, 100.0 * received / num_fragments, received,
+                 num_fragments);
       }
     }
   }
@@ -476,9 +489,9 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
       of_parameters_t* params = 0;
 
       if (packet->header.source_symbols() >= MIN_PACKETS_LDPC) {
-        ROS_DEBUG("LDPC");
+        ROS_DEBUG("[TOPIC_RECEIVER]: LDPC");
         if (of_create_codec_instance(&ses, OF_CODEC_LDPC_STAIRCASE_STABLE, OF_DECODER, 1) != OF_STATUS_OK) {
-          ROS_ERROR("Could not create LDPC decoder");
+          ROS_ERROR("[TOPIC_RECEIVER]: Could not create LDPC decoder");
           return;
         }
 
@@ -489,14 +502,14 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
         ldpc_params->prng_seed              = packet->header.prng_seed();
         ldpc_params->N1                     = 7;
 
-        ROS_DEBUG("LDPC parameters: %d, %d, %d, 0x%X, %d", ldpc_params->nb_source_symbols, ldpc_params->nb_repair_symbols, ldpc_params->encoding_symbol_length,
-                  ldpc_params->prng_seed, ldpc_params->N1);
+        ROS_DEBUG("[TOPIC_RECEIVER]: LDPC parameters: %d, %d, %d, 0x%X, %d", ldpc_params->nb_source_symbols, ldpc_params->nb_repair_symbols,
+                  ldpc_params->encoding_symbol_length, ldpc_params->prng_seed, ldpc_params->N1);
 
         params = (of_parameters*)ldpc_params;
       } else {
-        ROS_DEBUG("REED");
+        ROS_DEBUG("[TOPIC_RECEIVER]: REED");
         if (of_create_codec_instance(&ses, OF_CODEC_REED_SOLOMON_GF_2_M_STABLE, OF_DECODER, 1) != OF_STATUS_OK) {
-          ROS_ERROR("Could not create REED_SOLOMON decoder");
+          ROS_ERROR("[TOPIC_RECEIVER]: Could not create REED_SOLOMON decoder");
           return;
         }
 
@@ -506,13 +519,13 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
         rs_params->encoding_symbol_length = packet->header.symbol_length();
         rs_params->m                      = 8;
 
-        ROS_DEBUG("REED params: %d, %d, %d", rs_params->nb_source_symbols, rs_params->nb_repair_symbols, rs_params->encoding_symbol_length);
+        ROS_DEBUG("[TOPIC_RECEIVER]: REED params: %d, %d, %d", rs_params->nb_source_symbols, rs_params->nb_repair_symbols, rs_params->encoding_symbol_length);
 
         params = (of_parameters_t*)rs_params;
       }
 
       if (of_set_fec_parameters(ses, params) != OF_STATUS_OK) {
-        ROS_ERROR("Could not set FEC parameters");
+        ROS_ERROR("[TOPIC_RECEIVER]: Could not set FEC parameters");
         of_release_codec_instance(ses);
         return;
       }
@@ -525,18 +538,19 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
 
     msg->received_symbols++;
 
-    ROS_DEBUG("msg: %10d, symbol: %10d/%10d", msg->id, packet->header.symbol_id(), packet->header.source_symbols());
+    ROS_DEBUG("[TOPIC_RECEIVER]: msg: %10d, symbol: %10d/%10d", msg->id, packet->header.symbol_id(), packet->header.source_symbols());
 
     uint8_t* symbol_begin = packet->data;
 
     if (size - sizeof(FECPacket::Header) != msg->params->encoding_symbol_length) {
-      ROS_ERROR("Symbol size mismatch: got %d, expected %d", (int)(size - sizeof(FECPacket::Header)), (int)(msg->params->encoding_symbol_length));
+      ROS_ERROR("[TOPIC_RECEIVER]: Symbol size mismatch: got %d, expected %d", (int)(size - sizeof(FECPacket::Header)),
+                (int)(msg->params->encoding_symbol_length));
       return;
     }
 
     // FEC iterative decoding
     if (of_decode_with_new_symbol(msg->decoder.get(), symbol_begin, packet->header.symbol_id()) != OF_STATUS_OK) {
-      ROS_ERROR_THROTTLE(5.0, "Could not decode symbol");
+      ROS_ERROR_THROTTLE(5.0, "[TOPIC_RECEIVER]: Could not decode symbol");
       return;
     }
 
@@ -556,7 +570,7 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
         if (ret == OF_STATUS_OK)
           done = true;
         else {
-          ROS_ERROR("ML decoding failed, dropping message...");
+          ROS_ERROR("[TOPIC_RECEIVER]: ML decoding failed, dropping message...");
           msg->complete = true;
           return;
         }
@@ -564,18 +578,18 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
     }
 
     if (done) {
-      ROS_DEBUG("FEC: Decoding done!");
+      ROS_DEBUG("[TOPIC_RECEIVER]: FEC: Decoding done!");
 
       std::vector<void*> symbols(msg->params->nb_source_symbols, 0);
 
       if (of_get_source_symbols_tab(msg->decoder.get(), symbols.data()) != OF_STATUS_OK) {
-        ROS_ERROR("Could not get decoded symbols");
+        ROS_ERROR("[TOPIC_RECEIVER]: Could not get decoded symbols");
         return;
       }
 
       uint64_t payloadLength = msg->params->nb_source_symbols * msg->params->encoding_symbol_length;
       if (msg->params->encoding_symbol_length < sizeof(FECHeader) || payloadLength < sizeof(FECHeader)) {
-        ROS_ERROR("Invalid short payload");
+        ROS_ERROR("[TOPIC_RECEIVER]: Invalid short payload");
         m_incompleteMessages.erase(it);
         return;
       }
@@ -595,7 +609,7 @@ void UDPReceiver::handleMessagePacket(MessageBuffer::iterator it, std::vector<ui
         writePtr += msg->params->encoding_symbol_length;
       }
 
-      ROS_DEBUG("Received a message with padding %d", (int)msgHeader.padding);
+      ROS_DEBUG("[TOPIC_RECEIVER]: Received a message with padding %d", (int)msgHeader.padding);
       payloadLength -= msgHeader.padding;
 
       msg->payload.resize(payloadLength);

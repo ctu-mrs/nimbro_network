@@ -19,6 +19,8 @@
 
 #include "protocol.h"
 
+#include <mrs_lib/ParamLoader.h>
+
 static void errnoError(const std::string& msg) {
   std::stringstream ss;
   ss << msg << ": " << strerror(errno);
@@ -29,21 +31,23 @@ namespace nimbro_service_transport
 {
 
 UDPServer::UDPServer() : m_nh("~"), m_buffer(1024) {
-  ROS_INFO("Starting UDP SERVER ");
-  ROS_INFO("Loading parameters: ");
+
+  // | ------------------- loading parameters ------------------- |
+  mrs_lib::ParamLoader param_loader(m_nh, "SERVICE_SERVER");
+  ROS_INFO("[SERVICE_SERVER]: Loading parameters: ");
 
   int port;
-  m_nh.param("port", port, 5000);
-  m_nh.param("call_timeout", m_call_timeout, double(0.1));
-  m_nh.param("call_repeats", m_call_repeats, int(3));
+  param_loader.load_param("port", port, 5000);
+  param_loader.load_param("call_timeout", m_call_timeout, double(0.1));
+  param_loader.load_param("call_repeats", m_call_repeats, int(3));
 
-  // printing port parameter
-  std::cout << "    parameter 'port': " << port << std::endl;
-  // printing call_timeout parameter
-  std::cout << "    parameter 'call_timeout': " << m_call_timeout << std::endl;
-  // printing call_repeats parameter
-  std::cout << "    parameter 'call_repeats': " << m_call_repeats << std::endl;
-  std::cout << std::endl;
+  // | ----------------------- finish loading ---------------------- |
+
+  if (!param_loader.loaded_successfully()) {
+    ROS_ERROR("[SERVICE_SERVER]: Could not load all parameters!");
+    ros::shutdown();
+    return;
+  }
 
   m_fd = socket(AF_INET6, SOCK_DGRAM, 0);
   if (m_fd < 0)
@@ -67,11 +71,11 @@ UDPServer::UDPServer() : m_nh("~"), m_buffer(1024) {
     errnoError("Could not bind socket");
   }
 
-  ROS_INFO("UDP SERVER initialized.");
+  ROS_WARN("[SERVICE_SERVER]: UDP Service server initialized.");
 }
 
 UDPServer::~UDPServer() {
-  ROS_INFO("UDP SERVER terminated.");
+  ROS_INFO("[SERVICE_SERVER]: UDP Service server terminated.");
   close(m_fd);
 }
 
@@ -162,7 +166,7 @@ void UDPServer::handlePacket() {
 
   int ret = recvmsg(m_fd, &msg, 0);
   if (ret < 0) {
-    ROS_ERROR("Could not recvmsg(): %s", strerror(errno));
+    ROS_ERROR("[SERVICE_SERVER]: Could not recvmsg(): %s", strerror(errno));
     return;
   }
 
@@ -170,7 +174,7 @@ void UDPServer::handlePacket() {
 
 
   if (m_buffer.size() < (int)sizeof(ServiceCallAcknowledgement)) {
-    ROS_ERROR("Received short packet of size %lu", m_buffer.size());
+    ROS_ERROR("[SERVICE_SERVER]: Received short packet of size %lu", m_buffer.size());
     return;
   }
 
@@ -202,25 +206,25 @@ void UDPServer::handlePacket() {
       reqHandler->cond_msg_acknowledgement_received.notify_one();
       return;
     } else {
-      ROS_WARN("Received unexpected UDP service packet answer, ignoring");
+      ROS_WARN("[SERVICE_SERVER]: Received unexpected UDP service packet answer, ignoring");
       return;
     }
   }
 
   if (m_buffer.size() < sizeof(ServiceCallRequest)) {
-    ROS_ERROR("Received short packet of size %lu", m_buffer.size());
+    ROS_ERROR("[SERVICE_SERVER]: Received short packet of size %lu", m_buffer.size());
     return;
   }
 
   const ServiceCallRequest* req = reinterpret_cast<ServiceCallRequest*>(m_buffer.data());
 
   if (m_buffer.size() < sizeof(ServiceCallRequest) + req->name_length) {
-    ROS_ERROR("request header references name which is out-of-buffer");
+    ROS_ERROR("[SERVICE_SERVER]: request header references name which is out-of-buffer");
     return;
   }
 
   if (m_buffer.size() < sizeof(ServiceCallRequest) + req->name_length() + req->request_length()) {
-    ROS_ERROR("request header references data which is out-of-buffer");
+    ROS_ERROR("[SERVICE_SERVER]: request header references data which is out-of-buffer");
     return;
   }
 
@@ -283,7 +287,7 @@ void UDPServer::handlePacket() {
     boost::unique_lock<boost::mutex> lock(reqHandler->mutex);
 
     if (reqHandler->calling) {
-      ROS_WARN("Received additional request for in-progress service call");
+      ROS_WARN("[SERVICE_SERVER]: Received additional request for in-progress service call");
       reqHandler->sendAcknowledgement();
     } else {
       reqHandler->sendResponse();
@@ -331,7 +335,7 @@ void UDPServer::RequestHandler::sendResponse() {
 
   int ret = sendmsg(fd, &msg, 0);
   if (ret < 0) {
-    ROS_ERROR("Could not sendmsg(): %s", strerror(errno));
+    ROS_ERROR("[SERVICE_SERVER]: Could not sendmsg(): %s", strerror(errno));
     return;
   }
 }
@@ -383,7 +387,7 @@ void UDPServer::RequestHandler::sendAcknowledgement() {
 
   int ret = sendmsg(fd, &msg, 0);
   if (ret < 0) {
-    ROS_ERROR("Could not sendmsg() with acknowledgement: %s", strerror(errno));
+    ROS_ERROR("[SERVICE_SERVER]: Could not sendmsg() with acknowledgement: %s", strerror(errno));
     return;
   }
 }
@@ -395,12 +399,12 @@ void UDPServer::RequestHandler::call() {
   ros::SerializedMessage msg_response;
 
 
-  ROS_INFO("[%s]: Calling.", ops.service.c_str());
+  ROS_INFO("[SERVICE_SERVER]: [%s]: Calling.", ops.service.c_str());
   bool call_result = client.call(request, msg_response, std::string("*"));
   if (call_result) {
-    ROS_INFO("[%s]: Call was successful.", ops.service.c_str());
+    ROS_INFO("[SERVICE_SERVER]: [%s]: Call was successful.", ops.service.c_str());
   } else {
-    ROS_ERROR("[%s]: Call error.", ops.service.c_str());
+    ROS_ERROR("[SERVICE_SERVER]: [%s]: Call error.", ops.service.c_str());
   }
 
   topic_tools::ShapeShifter deserializedResponse;
@@ -434,7 +438,7 @@ void UDPServer::RequestHandler::call() {
   }
 
   if (!gotAck) {
-    ROS_ERROR("[%s]: Have not received Ack in timeout!", service.c_str());
+    ROS_ERROR("[SERVICE_SERVER]: [%s]: Have not received Ack in timeout!", service.c_str());
   }
 }
 

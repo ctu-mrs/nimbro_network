@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   std_srvs
   topic_tools
+  mrs_lib
 )
 
 add_message_files(FILES

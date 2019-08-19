@@ -21,6 +21,7 @@
     <depend>std_srvs</depend>
     <depend>topic_tools</depend>
     <depend>yaml-cpp</depend>
+    <depend>mrs_lib</depend>
 
     <build_depend>qtbase5-dev</build_depend>
 
