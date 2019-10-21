@@ -52,7 +52,7 @@ endif()
 include(ExternalProject)
 ExternalProject_Add(
   openfec_lib
-  URL http://openfec.org/files/openfec_v1_4_2.tgz
+  URL ${CMAKE_CURRENT_SOURCE_DIR}/lib/openfec_v1_4_2.tgz
   URL_MD5 c4f8b0aa3e9352f2e713e3db2885ea1c
   BUILD_COMMAND make
   INSTALL_COMMAND cp "<SOURCE_DIR>/bin/Release/libopenfec.so" "${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/libopenfec.so.1.4.2" && ln -sf "${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/libopenfec.so.1.4.2" "${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/libopenfec.so.1" && ln -sf "${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/libopenfec.so.1" "${CATKIN_DEVEL_PREFIX}/${CATKIN_PACKAGE_LIB_DESTINATION}/libopenfec.so"
