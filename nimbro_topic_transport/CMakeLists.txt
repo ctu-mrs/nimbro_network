@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 project(nimbro_topic_transport)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 find_package(catkin REQUIRED COMPONENTS
   message_generation
