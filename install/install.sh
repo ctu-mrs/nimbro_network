@@ -3,7 +3,7 @@
 SYSCTL_FILE="/etc/sysctl.conf"
 MULTICAST_IP="224.0.0.1"
 
-#Install dependencies
+# Install dependencies
 echo "Installing dependencies"
 sudo apt -y install ros-melodic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
 
@@ -22,6 +22,8 @@ if [[ "$multicast_enabled" == "1" ]]; then
 else 
   echo "Multicast is already enabled"
 fi
+
+~/git/uav_core/miscellaneous/scripts/set_broadcast_rc_variable.sh
 
 echo "Done"
 
