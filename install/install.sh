@@ -1,7 +1,6 @@
 #!/bin/bash
 
 SYSCTL_FILE="/etc/sysctl.conf"
-MULTICAST_IP="224.0.0.1"
 
 # Install dependencies
 echo "Installing dependencies"
@@ -23,7 +22,7 @@ else
   echo "Multicast is already enabled"
 fi
 
-~/git/uav_core/miscellaneous/scripts/set_broadcast_rc_variable.sh
+~/git/uav_core/ros_packages/mrs_general/scripts/set_broadcast_rc_variable.sh
 
 echo "Done"
 
