@@ -22,7 +22,11 @@ else
   echo "Multicast is already enabled"
 fi
 
+# Set broadcast IP address
 ~/git/uav_core/ros_packages/mrs_general/scripts/set_broadcast_rc_variable.sh
+
+# Populate /etc/hosts
+~/git/uav_core/miscellaneous/dotssh/generate_ssh_config.sh
 
 echo "Done"
 
