@@ -19,7 +19,7 @@
 
 #include "protocol.h"
 
-#include <mrs_lib/ParamLoader.h>
+#include <mrs_lib/param_loader.h>
 
 static void errnoError(const std::string& msg) {
   std::stringstream ss;
@@ -37,13 +37,13 @@ UDPServer::UDPServer() : m_nh("~"), m_buffer(1024) {
   ROS_INFO("[SERVICE_SERVER]: Loading parameters: ");
 
   int port;
-  param_loader.load_param("port", port, 5000);
-  param_loader.load_param("call_timeout", m_call_timeout, double(0.1));
-  param_loader.load_param("call_repeats", m_call_repeats, int(3));
+  param_loader.loadParam("port", port, 5000);
+  param_loader.loadParam("call_timeout", m_call_timeout, double(0.1));
+  param_loader.loadParam("call_repeats", m_call_repeats, int(3));
 
   // | ----------------------- finish loading ---------------------- |
 
-  if (!param_loader.loaded_successfully()) {
+  if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[SERVICE_SERVER]: Could not load all parameters!");
     ros::shutdown();
     return;

@@ -20,7 +20,7 @@
 #include "protocol.h"
 #include "../common.h"
 
-#include <mrs_lib/ParamLoader.h>
+#include <mrs_lib/param_loader.h>
 
 namespace nimbro_service_transport
 {
@@ -368,23 +368,23 @@ int main(int argc, char** argv) {
   std::string hostname = hostname_buf;
 
   std::vector<std::string> robot_names;
-  param_loader.load_param<std::vector<std::string>>("network/robot_names", robot_names);
+  param_loader.loadParam<std::vector<std::string>>("network/robot_names", robot_names);
 
   int destination_port;
-  param_loader.load_param("destination_port", destination_port, 5000);
+  param_loader.loadParam("destination_port", destination_port, 5000);
 
   double call_timeout;
-  param_loader.load_param("call_timeout", call_timeout, double(0.1));
+  param_loader.loadParam("call_timeout", call_timeout, double(0.1));
 
   int call_repeats;
-  param_loader.load_param("call_repeats", call_repeats, int(3));
+  param_loader.loadParam("call_repeats", call_repeats, int(3));
 
   double response_timeout;
-  param_loader.load_param("response_timeout", response_timeout, double(3));
+  param_loader.loadParam("response_timeout", response_timeout, double(3));
 
   // Initialize & advertise the list of services
   XmlRpc::XmlRpcValue service_list;
-  param_loader.load_param("services", service_list);
+  param_loader.loadParam("services", service_list);
 
   ROS_ASSERT(service_list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
@@ -392,11 +392,11 @@ int main(int argc, char** argv) {
   robot_names.erase(std::remove(robot_names.begin(), robot_names.end(), hostname), robot_names.end());
 
   std::string topic_prefix;
-  param_loader.load_param("topic_prefix", topic_prefix, std::string(""));
+  param_loader.loadParam("topic_prefix", topic_prefix, std::string(""));
 
   // | ----------------------- finish loading ---------------------- |
 
-  if (!param_loader.loaded_successfully()) {
+  if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[SERVICE_CLIENT]: Could not load all parameters!");
     ros::shutdown();
     return 0;

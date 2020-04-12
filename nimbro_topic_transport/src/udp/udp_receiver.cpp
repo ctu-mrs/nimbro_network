@@ -22,7 +22,7 @@
 #include "../topic_info.h"
 
 #include <nimbro_topic_transport/CompressedMsg.h>
-#include <mrs_lib/ParamLoader.h>
+#include <mrs_lib/param_loader.h>
 
 #if WITH_PLOTTING
 #include <plot_msgs/Plot.h>
@@ -59,7 +59,7 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
   m_hostname = std::string(hostnameBuf);
 
   int port;
-  param_loader.load_param("port", port, 5050);
+  param_loader.loadParam("port", port, 5050);
 
   sockaddr_in addr;
   addr.sin_family      = AF_INET;
@@ -77,11 +77,11 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
     throw std::runtime_error(strerror(errno));
   }
 
-  param_loader.load_param("drop_repeated_msgs", m_dropRepeatedMessages, true);
-  param_loader.load_param("warn_drop_incomplete", m_warnDropIncomplete, true);
-  param_loader.load_param("keep_compressed", m_keepCompressed, false);
+  param_loader.loadParam("drop_repeated_msgs", m_dropRepeatedMessages, true);
+  param_loader.loadParam("warn_drop_incomplete", m_warnDropIncomplete, true);
+  param_loader.loadParam("keep_compressed", m_keepCompressed, false);
 
-  param_loader.load_param("fec", m_fec, false);
+  param_loader.loadParam("fec", m_fec, false);
 
 #if !(WITH_OPENFEC)
   if (m_fec)
@@ -95,14 +95,14 @@ UDPReceiver::UDPReceiver() : m_receivedBytesInStatsInterval(0), m_expectedPacket
   m_stats.local_port = port;
   m_stats.fec        = m_fec;
 
-  param_loader.load_param("label", m_stats.label, std::string());
+  param_loader.loadParam("label", m_stats.label, std::string());
 
   std::string topic_prefix;
-  param_loader.load_param("topic_prefix", topic_prefix, std::string());
+  param_loader.loadParam("topic_prefix", topic_prefix, std::string());
 
   // | ----------------------- finish loading ---------------------- |
 
-  if (!param_loader.loaded_successfully()) {
+  if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[TOPIC_RECEIVER]: Could not load all parameters!");
     ros::shutdown();
     return;

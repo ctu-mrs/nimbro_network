@@ -23,7 +23,7 @@
 #include <signal.h>
 
 #include <nimbro_topic_transport/SenderStats.h>
-#include <mrs_lib/ParamLoader.h>
+#include <mrs_lib/param_loader.h>
 
 namespace nimbro_topic_transport
 {
@@ -34,11 +34,11 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   // | ------------------- loading parameters ------------------- |
   mrs_lib::ParamLoader param_loader(private_nh, "TOPIC_SENDER");
   ROS_FATAL("[TOPIC_SENDER]: Could not create socket: %s", strerror(errno));
-  param_loader.load_param("relay_mode", m_relayMode, false);
+  param_loader.loadParam("relay_mode", m_relayMode, false);
   std::string dest_host;
-  param_loader.load_param("destination_addr", dest_host, std::string("localhost"));
+  param_loader.loadParam("destination_addr", dest_host, std::string("localhost"));
   int dest_port;
-  param_loader.load_param("destination_port", dest_port, 5050);
+  param_loader.loadParam("destination_port", dest_port, 5050);
 
   std::string dest_port_str = boost::lexical_cast<std::string>(dest_port);
 
@@ -69,8 +69,8 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
 
   // If we have a specified source port, bind to it.
   if (private_nh.hasParam("source_port")) {
-    param_loader.load_param("source_port", source_port);
-    if (!param_loader.loaded_successfully()) {
+    param_loader.loadParam("source_port", source_port);
+    if (!param_loader.loadedSuccessfully()) {
       ROS_FATAL("[TOPIC_SENDER]: Invalid source_port");
       throw std::runtime_error("Invalid source port");
     }
@@ -101,14 +101,14 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   freeaddrinfo(info);
 
   std::string topic_prefix;
-  param_loader.load_param("topic_prefix", topic_prefix, std::string(""));
+  param_loader.loadParam("topic_prefix", topic_prefix, std::string(""));
 
   // Do we enable FEC?
-  param_loader.load_param("fec", m_fec, 0.0);
+  param_loader.loadParam("fec", m_fec, 0.0);
 
   // Setup the individual topic senders.
   XmlRpc::XmlRpcValue list;
-  param_loader.load_param("topics", list);
+  param_loader.loadParam("topics", list);
   ROS_ASSERT(list.getType() == XmlRpc::XmlRpcValue::TypeArray);
 
   for (int32_t i = 0; i < list.size(); ++i) {
@@ -180,14 +180,14 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
     m_senders.push_back(sender);
   }
 
-  param_loader.load_param("duplicate_first_packet", m_duplicateFirstPacket, false);
+  param_loader.loadParam("duplicate_first_packet", m_duplicateFirstPacket, false);
 
   // If enabled, start relay control thread.
   if (m_relayMode) {
     double target_bitrate;
 
-    param_loader.load_param("relay_target_bitrate", target_bitrate);
-    if (!param_loader.loaded_successfully()) {
+    param_loader.loadParam("relay_target_bitrate", target_bitrate);
+    if (!param_loader.loadedSuccessfully()) {
       throw std::runtime_error("relay mode needs relay_target_bitrate param");
     }
 
@@ -195,7 +195,7 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
     }
 
     double relay_control_rate;
-    param_loader.load_param("relay_control_rate", relay_control_rate, 100.0);
+    param_loader.loadParam("relay_control_rate", relay_control_rate, 100.0);
 
     m_relayTokens        = 0;
     m_relayIndex         = 0;
@@ -222,11 +222,11 @@ UDPSender::UDPSender() : m_msgID(0), m_sentBytesInStatsInterval(0) {
   m_stats.source_port      = source_port;
   m_stats.fec              = m_fec != 0.0;
 
-  param_loader.load_param("label", m_stats.label, std::string());
+  param_loader.loadParam("label", m_stats.label, std::string());
 
   // | ----------------------- finish loading ---------------------- |
 
-  if (!param_loader.loaded_successfully()) {
+  if (!param_loader.loadedSuccessfully()) {
     ROS_ERROR("[TOPIC_SENDER]: Could not load all parameters!");
     ros::shutdown();
     return;
