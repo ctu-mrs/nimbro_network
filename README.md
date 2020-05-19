@@ -1,4 +1,4 @@
-# nimbro_network - ROS transport for high-latency, low-quality networks
+# Nimbro Network - ROS transport for high-latency, low-quality networks
 
 `nimbro_network` is a set of ROS packages for transporting ROS topics and services over the network. 
 
@@ -82,7 +82,7 @@ but addresses each of the above issues.
 * Service transport:
     * TCP protocol with minimal latency (support for TCP Fast-Open is included)
     * UDP protocol
-* Additional notes:
+* Additional ROS nodes:
     * Special nimbro_log_transport node for transporting the ROS log over a
       lossy connection
     * Special tf_throttle node for creating & transferring TF snapshots at pre-
