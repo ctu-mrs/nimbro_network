@@ -1,6 +1,6 @@
 # nimbro_network - ROS transport for high-latency, low-quality networks
 
-`nimbro_network` is a set of ROS packages for transporting ROS topicsand services over network. 
+`nimbro_network` is a set of ROS packages for transporting ROS topics and services over the network. 
 
 ## Automatic installation
 
@@ -15,38 +15,38 @@ sudo apt install ros-melodic-catch-ros libx264-dev libzstd-dev libqcustomplot-de
 ```
 
 ### Enable multicast
-For all computers, first check if the multicast feature is enabled using the following command.
+For all computers, first, check if the multicast feature is enabled using the following command.
 ```bash
 cat /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
 ```
 
-If this command returns 0, the multicast feature is enabled and you can go ahead to the next section. 
-To temporary enable the multicast feature, execute the following command, however, when the computer restarts, this configuration will be lost.
+If this command returns 0, the multicast feature is enabled, and you can go ahead to the next section. 
+To temporarily enable the multicast feature, execute the following command, however, when the computer restarts, this configuration will be lost.
 ```bash
 sudo sh -c "echo 0 >/proc/sys/net/ipv4/icmp_echo_ignore_broadcasts"
 ```
 
-To permanently enable the multicast feature, edit the /etc/sysctl.conf file and add the following line, or uncomment it, if it already exists, and change its default value.
+To permanently enable the multicast feature, edit the `etc/sysctl.conf` file and add the following line, or uncomment it, if it already exists, and change its default value.
 ```bash
 net.ipv4.icmp_echo_ignore_broadcasts=0
 ```
 
-In order for the changes to take effect, execute the following command:
+For the changes to take effect, execute the following command:
 ```bash
 sudo service procps restart
 ```
 
-At this point, to check whether the multicast feature is working or not, execute the following command, at any computer.
+At this point, to check whether the multicast feature is working, execute the following command at any computer.
 ```bash
 ping 192.168.0.255
 ```
 
-If everything is configured properly, you should get a reply from each computer in the common network at each iteration.
+If everything is configured correctly, you should get a reply from each computer in the shared network at each iteration.
 
-### Host name and IP address binding
-For all computers on a local ROS network, and for all ROS networks, modify the /etc/hosts file using your favorite text editor. The name of each host should be the same as its machine name.
+### Hostname and IP address binding
+For all computers on a local ROS network and all ROS networks, modify the `/etc/hosts` file using your favorite text editor. The name of each host should be the same as its machine name.
 
-### Setting the broadcast address in launch file
+### Setting the broadcast address in the launch file
 
 * Find out the broadcast ip address of the network using ifconfig
 * Set the broadcast address in `mrs_general/launch/nimbro.launch` to: 
@@ -54,13 +54,11 @@ For all computers on a local ROS network, and for all ROS networks, modify the /
   <arg name="broadcast_addr" default="192.168.69.255" />
   ```
 
-
 ## Why?
 
 ROS has a network transparency layer. But it has issues, namely:
 
-* For subscription, a lengthy TCP handshake is required, even if you want to
-  use the UDP transport. If you lose the connection, you have to re-do the
+* For subscription, a lengthy TCP handshake is required, even when using UDP transport. If you lose the connection, you have to re-do the
   handshake, possibly taking a long time
 * No compression
 * ROS service calls need several handshakes for each call
@@ -68,7 +66,6 @@ ROS has a network transparency layer. But it has issues, namely:
 
 Our network stack offers the same functions as the ROS network transparency,
 but addresses each of the above issues.
-
 
 ## Features
 
@@ -85,7 +82,7 @@ but addresses each of the above issues.
 * Service transport:
     * TCP protocol with minimal latency (support for TCP Fast-Open is included)
     * UDP protocol
-* Additional nodes:
+* Additional notes:
     * Special nimbro_log_transport node for transporting the ROS log over a
       lossy connection
     * Special tf_throttle node for creating & transferring TF snapshots at pre-
