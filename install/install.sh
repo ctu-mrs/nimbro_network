@@ -30,7 +30,7 @@ while true; do
   then
     resp=y
   else
-    [[ -t 0 ]] && { read -t 10 -n 2 -p $'\e[1;32mEnable multicast permanently? [y/n] (default: '"$default"$')\e[0m\n' resp || resp=$default ; }
+    [[ -t 0 ]] && { read -t 10 -n 2 -p $'\e[1;32mEnable multicast permanently? [y/n] (default: '"$default"$')\e[0m\n\e[1;31m!!! Note: this will make your computer visible in subnet through broadcast!!!\e[0m\n' resp || resp=$default ; }
   fi
   response=`echo $resp | sed -r 's/(.*)$/\1=/'`
 
@@ -54,7 +54,7 @@ while true; do
   elif [[ $response =~ ^(n|N)=$ ]]
   then
     while true; do
-      [[ -t 0 ]] && { read -t 10 -n 2 -p $'\e[1;32mEnable multicast temporarily? [y/n] (default: '"$default"$')\e[0m\n' resp || resp=$default ; }
+      [[ -t 0 ]] && { read -t 10 -n 2 -p $'\e[1;32mEnable multicast temporarily? [y/n] (default: '"$default"$')\e[0m\n\e[1;31m!!! Note: this will make your computer visible in subnet through broadcast, but only till restart of computer. !!!\e[0m\n' resp || resp=$default ; }
       response=`echo $resp | sed -r 's/(.*)$/\1=/'`
 
       if [[ $response =~ ^(y|Y)=$ ]]
