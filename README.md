@@ -1,5 +1,8 @@
 # Nimbro Network - ROS transport for high-latency, low-quality networks
 
+| Build status | [![Build Status](https://github.com/ctu-mrs/nimbro_network/workflows/Melodic/badge.svg)](https://github.com/ctu-mrs/nimbro_network/actions) | [![Build Status](https://github.com/ctu-mrs/nimbro_network/workflows/Noetic/badge.svg)](https://github.com/ctu-mrs/nimbro_network/actions) |
+|--------------|---------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+
 `nimbro_network` is a set of ROS packages for transporting ROS topics and services over the network. 
 
 ## Automatic installation
