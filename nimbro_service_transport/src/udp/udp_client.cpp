@@ -182,7 +182,7 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
       publishStatus(name, header->counter, ServiceStatus::STATUS_CONNECTION_ERROR);
       return false;
     }
-    boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_call_timeout * 1000);
+    boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(int(m_call_timeout * 1000));
     gotAck                           = record.cond_msg_acknowledgement_received.timed_wait(lock, timeout);
     if (gotAck) {
       break;
@@ -195,7 +195,7 @@ bool UDPClient::call(const std::string& name, ros::ServiceCallbackHelperCallPara
   }
 
 
-  boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(m_call_timeout * 1000);
+  boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(int(m_call_timeout * 1000));
   bool                     gotMsg  = record.cond_response_received.timed_wait(lock, timeout, [&]() { return record.response.num_bytes != 0; });
   m_requests.erase(it);
 

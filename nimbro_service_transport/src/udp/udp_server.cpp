@@ -430,7 +430,7 @@ void UDPServer::RequestHandler::call() {
   bool gotAck = false;
   for (int i = 0; i < call_repeats; i++) {
     sendResponse();
-    boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(call_timeout * 1000);
+    boost::system_time const timeout = boost::get_system_time() + boost::posix_time::milliseconds(int(call_timeout * 1000));
     gotAck                           = cond_msg_acknowledgement_received.timed_wait(lock, timeout);
     if (gotAck) {
       break;

@@ -1,5 +1,3 @@
-#include <nimbro_cam_transport/rgb_to_yuv420.h>
-
 inline void rgb_to_yuv(unsigned char   b, unsigned char   g, unsigned char   r,
                        unsigned char & y, unsigned char & u, unsigned char & v)
 {

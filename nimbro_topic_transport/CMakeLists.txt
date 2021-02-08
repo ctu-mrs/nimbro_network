@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.1.2)
 
 project(nimbro_topic_transport)
 
@@ -125,26 +125,14 @@ qt5_wrap_cpp(MOC_SRCS
   src/gui/topic_gui.h
 )
 
-qt5_wrap_cpp(BAND_MOC_SRCS
-  src/gui/bandwidth_gui.h
-)
-
 add_library(topic_gui
   ${MOC_SRCS}
   src/gui/dot_widget.cpp
   src/gui/topic_gui.cpp
 )
 
-add_library(bandwidth_gui
-  ${BAND_MOC_SRCS}
-  src/gui/bandwidth_gui.cpp
-)
-
 add_dependencies(topic_gui ${${PROJECT_NAME}_EXPORTED_TARGETS})
 target_link_libraries(topic_gui ${QT_LIBRARIES})
-
-add_dependencies(bandwidth_gui ${${PROJECT_NAME}_EXPORTED_TARGETS})
-target_link_libraries(bandwidth_gui ${QT_LIBRARIES} ${QCustomPlot_LIBRARIES} yaml-cpp)
 
 # Tests
 if(CATKIN_ENABLE_TESTING)

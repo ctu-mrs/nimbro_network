@@ -1,22 +1,12 @@
 <package format="2">
-    <name>nimbro_cam_transport</name>
-    <description>Network transport for camera images</description>
-    <version>0.1.2</version>
-    <maintainer email="max.schwarz@uni-bonn.de">Max Schwarz</maintainer>
-    <license>BSD</license>
+	<name>nimbro_cam_transport</name>
+	<description>Network transport for camera images</description>
+	<version>0.0.1</version>
+	<maintainer email="max.schwarz@uni-bonn.de">Max Schwarz</maintainer>
+	<license>BSD</license>
 
-    <buildtool_depend>catkin</buildtool_depend>
-
-    <depend>cv_bridge</depend>
-    <depend>dynamic_reconfigure</depend>
-    <depend>ffmpeg</depend>
-    <depend>image_transport</depend>
-    <depend>libx264-dev</depend>
-    <depend>roscpp</depend>
-
-    <build_depend>pkg-config</build_depend>
-
-    <export>
-        <image_transport plugin="${prefix}/image_transport_plugins.xml"/>
-    </export>
+	<buildtool_depend>catkin</buildtool_depend>
+	<depend>image_transport</depend>
+	<depend>roscpp</depend>
+	<depend>cv_bridge</depend>
 </package>
