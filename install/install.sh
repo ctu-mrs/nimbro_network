@@ -22,7 +22,14 @@ echo "$0: Installing nimbro_network package"
 
 # Install dependencies
 echo "Installing dependencies"
+if [ "$ROS_DISTRO" = "melodic" ]; then
 sudo apt -y install ros-melodic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
+elif [ "$ROS_DISTRO" = "noetic" ]; then
+sudo apt -y install ros-noetic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
+else
+  echo -e "\e[31mRos version neither melodic/noetic, installing Noetic packages.\e[0m"
+sudo apt -y install ros-noetic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
+fi
 
 default=n
 while true; do
