@@ -5,6 +5,10 @@ set -e
 trap 'last_command=$current_command; current_command=$BASH_COMMAND' DEBUG
 trap 'echo "$0: \"${last_command}\" command failed with exit code $?"' ERR
 
+distro=`lsb_release -r | awk '{ print $2 }'`
+[ "$distro" = "18.04" ] && ROS_DISTRO="melodic"
+[ "$distro" = "20.04" ] && ROS_DISTRO="noetic"
+
 unattended=0
 for param in "$@"
 do
