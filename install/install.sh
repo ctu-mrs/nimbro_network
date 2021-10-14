@@ -9,7 +9,7 @@ unattended=0
 for param in "$@"
 do
   echo $param
-  if [ $param="--unattended" ]; then
+  if [[ $param == "--unattended" ]]; then
     echo "installing in unattended mode"
     unattended=1
     subinstall_params="--unattended"
@@ -22,10 +22,10 @@ echo "$0: Installing nimbro_network package"
 
 # Install dependencies
 echo "Installing dependencies"
-if [ "$ROS_DISTRO" = "melodic" ]; then
-sudo apt -y install ros-melodic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
-elif [ "$ROS_DISTRO" = "noetic" ]; then
-sudo apt -y install ros-noetic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
+if [[ "$ROS_DISTRO" == "melodic" ]]; then
+  sudo apt -y install ros-melodic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
+elif [[ "$ROS_DISTRO" == "noetic" ]]; then
+  sudo apt -y install ros-noetic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
 else
   echo -e "\e[31mRos version neither melodic/noetic, installing Noetic packages.\e[0m"
 sudo apt -y install ros-noetic-catch-ros libx264-dev libzstd-dev libqcustomplot-dev
@@ -50,10 +50,10 @@ while true; do
 
       echo "Enabling multicast permanently"
       sudo sh -c "echo net.ipv4.icmp_echo_ignore_broadcasts=0>>$SYSCTL_FILE"
-      
+
       echo "Restarting procps service"
       sudo service procps restart
-    else 
+    else
       echo "Multicast is already enabled"
     fi
 
@@ -88,4 +88,3 @@ while true; do
 done
 
 echo "$0: Done"
-
