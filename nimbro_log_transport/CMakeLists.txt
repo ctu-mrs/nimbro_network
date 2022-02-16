@@ -17,25 +17,56 @@ generate_messages(DEPENDENCIES
   std_msgs
   )
 
+set(EXECUTABLES
+  log_sender log_receiver
+  )
+
 catkin_package(
   CATKIN_DEPENDS message_runtime roscpp rosgraph_msgs std_msgs
   DEPENDS Boost
-)
+  )
 
-add_compile_options("-Wall")
+# add_compile_options("-Wall")
 
 include_directories(${catkin_INCLUDE_DIRS})
 
-add_executable(log_sender src/log_sender.cpp)
-target_link_libraries(log_sender ${catkin_LIBRARIES})
-add_dependencies(log_sender ${${PROJECT_NAME}_EXPORTED_TARGETS})
+# log sender
 
-add_executable(log_receiver src/log_receiver.cpp)
-target_link_libraries(log_receiver ${catkin_LIBRARIES})
-add_dependencies(log_receiver ${${PROJECT_NAME}_EXPORTED_TARGETS})
+add_executable(log_sender
+  src/log_sender.cpp
+  )
 
-install(TARGETS log_receiver log_sender
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+target_link_libraries(log_sender
+  ${catkin_LIBRARIES}
+  )
+
+add_dependencies(log_sender
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  )
+
+# log receiver
+
+add_executable(log_receiver
+  src/log_receiver.cpp
+  )
+
+target_link_libraries(log_receiver
+  ${catkin_LIBRARIES}
+  )
+
+add_dependencies(log_receiver
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  )
+
+## --------------------------------------------------------------
+## |                           Install                          |
+## --------------------------------------------------------------
+
+install(TARGETS ${EXECUTABLES}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+  )
+
+install(DIRECTORY ./
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  FILES_MATCHING PATTERN "*.xml"
+  )
