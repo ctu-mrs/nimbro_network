@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python3
 
 """
 Retrieves the message definition from the generated python files for a message
