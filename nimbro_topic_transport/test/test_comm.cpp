@@ -108,7 +108,7 @@ TEST_CASE("array", "[topic]")
 			[&](const std_msgs::UInt64MultiArrayConstPtr& msg){
 				ROS_INFO("array");
 				REQUIRE(msg->data.size() == 512);
-				for(int i = 0; i < 512; ++i)
+				for(long unsigned int i = 0; i < 512; ++i)
 				{
 					REQUIRE(msg->data[i] == i);
 				}
@@ -127,7 +127,7 @@ TEST_CASE("array", "[topic]")
 			[&](const std_msgs::UInt64MultiArrayConstPtr& msg) {
 				ROS_INFO("huge array");
 				REQUIRE(msg->data.size() == HUGE_SIZE);
-				for(int i = 0; i < HUGE_SIZE; ++i)
+				for(long unsigned int i = 0; i < HUGE_SIZE; ++i)
 				{
 					REQUIRE(msg->data[i] == i);
 				}
