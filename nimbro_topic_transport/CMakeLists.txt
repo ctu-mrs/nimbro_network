@@ -140,7 +140,7 @@ target_link_libraries(action_proxy
 )
 
 # GUI
-add_subdirectory(src/gui)
+# add_subdirectory(src/gui)
 
 # Tests
 if(catch_ros_FOUND)

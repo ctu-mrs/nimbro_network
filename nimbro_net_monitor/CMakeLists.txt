@@ -64,7 +64,7 @@ if(MNL_FOUND)
 endif()
 
 # GUI
-add_subdirectory(src/gui)
+# add_subdirectory(src/gui)
 
 install(TARGETS net_monitor
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

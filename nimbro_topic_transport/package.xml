@@ -13,6 +13,7 @@
 	<depend>topic_tools</depend>
 	<depend>yaml-cpp</depend>
 	<depend>libzstd-dev</depend>
+	<depend>libqt5-widgets</depend>
 
 	<!-- Since we have special rewriters for these messages, we depend on the
 	  message packages here.

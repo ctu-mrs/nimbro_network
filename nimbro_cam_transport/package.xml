@@ -11,4 +11,6 @@
 	<depend>ffmpeg</depend>
 	<depend>libx264-dev</depend>
 	<depend>cv_bridge</depend>
+	<depend>rostest</depend>
+
 </package>

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.10)
 
 project(nimbro_service_transport)
 
+set(COMPILE_GUI FALSE)
+
 find_package(catkin REQUIRED COMPONENTS
 	roscpp
 	roslib
@@ -9,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
 	message_generation
 	rostest
 	qt_gui_cpp
+  std_srvs
 )
 
 find_package(catch_ros)
@@ -69,24 +72,26 @@ add_dependencies(udp_client
 )
 
 # GUI
-find_package(Qt5Widgets REQUIRED)
+if(COMPILE_GUI)
+  find_package(Qt5Widgets REQUIRED)
 
-qt5_wrap_cpp(MOC_SRCS
-	src/gui/service_widget.h
-)
+  qt5_wrap_cpp(MOC_SRCS
+    src/gui/service_widget.h
+  )
 
-add_library(service_widget
-	${MOC_SRCS}
-	src/gui/service_widget.cpp
-)
+  add_library(service_widget
+    ${MOC_SRCS}
+    src/gui/service_widget.cpp
+  )
 
-add_dependencies(service_widget
-	${PROJECT_NAME}_generate_messages_cpp
-)
+  add_dependencies(service_widget
+    ${PROJECT_NAME}_generate_messages_cpp
+  )
 
-target_link_libraries(service_widget
-	Qt5::Widgets
-)
+  target_link_libraries(service_widget
+    Qt5::Widgets
+  )
+endif()
 
 # Tests
 if(catch_ros_FOUND)
@@ -116,7 +121,7 @@ if(catch_ros_FOUND)
 	add_rostest(test/test_tcp.test)
 endif()
 
-install(TARGETS service_server service_client udp_server udp_client service_widget
+install(TARGETS service_server service_client udp_server udp_client # service_widget
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
