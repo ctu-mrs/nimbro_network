@@ -166,16 +166,30 @@ if(catch_ros_FOUND)
 	add_rostest(test/transceiver.test ARGS port:=5780 fec:=false)
 endif()
 
-#install
+## --------------------------------------------------------------
+## |                           Install                          |
+## --------------------------------------------------------------
+
 install(TARGETS nimbro_topic_transport sender receiver action_proxy transceiver
         ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
-install(FILES utils/get_msg_def.py
-        DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+install(DIRECTORY launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
+install(DIRECTORY utils/
+  USE_SOURCE_PERMISSIONS
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  )
+
+install(DIRECTORY utils
+  USE_SOURCE_PERMISSIONS
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+  )
+
 install(FILES rqt_plugin.xml bandwidth_plugin.xml
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 )
