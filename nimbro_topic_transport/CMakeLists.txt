@@ -66,9 +66,7 @@ target_link_libraries(nimbro_topic_transport
 	${catkin_LIBRARIES}
 	${ZSTD_LIBRARIES}
 )
-target_compile_options(nimbro_topic_transport PUBLIC
-	"-march=native"
-)
+
 target_include_directories(nimbro_topic_transport PRIVATE
 	${CMAKE_CURRENT_BINARY_DIR}
 )
