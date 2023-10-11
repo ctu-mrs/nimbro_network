@@ -7,7 +7,7 @@
 
 #include <ros/console.h>
 
-#include <wirehair/wirehair.h>
+/* #include <wirehair/wirehair.h> */
 
 #include "../topic_info.h"
 
@@ -67,43 +67,43 @@ void Depacketizer::handleMessagePacket(std::list<PartialMessage>::iterator it, c
 	std::vector<uint8_t> recoveredData;
 
 	// Do we need to do FEC decoding?
-	if(header.repair_symbols())
-	{
-		if(header.source_symbols() > 1)
-		{
-			if(!msg->decoder)
-			{
-				msg->decoder.reset(wirehair_decoder_create(nullptr, header.source_symbols() * UDPPacket::MaxDataSize, UDPPacket::MaxDataSize), wirehair_free);
-			}
+	/* if(header.repair_symbols()) */
+	/* { */
+	/* 	if(header.source_symbols() > 1) */
+	/* 	{ */
+	/* 		if(!msg->decoder) */
+	/* 		{ */
+	/* 			msg->decoder.reset(wirehair_decoder_create(nullptr, header.source_symbols() * UDPPacket::MaxDataSize, UDPPacket::MaxDataSize), wirehair_free); */
+	/* 		} */
 
-			WirehairResult res = wirehair_decode(msg->decoder.get(), header.symbol_id, packet->packet()->data, packet->length - sizeof(UDPPacket::Header));
-			if(res == Wirehair_NeedMore)
-				return;
+	/* 		WirehairResult res = wirehair_decode(msg->decoder.get(), header.symbol_id, packet->packet()->data, packet->length - sizeof(UDPPacket::Header)); */
+	/* 		if(res == Wirehair_NeedMore) */
+	/* 			return; */
 
-			if(res != Wirehair_Success)
-			{
-				ROS_ERROR("Wirehair decode() error: %s", wirehair_result_string(res));
-				ROS_ERROR(" ^- on packet with symbol_id=%u, length=%lu", header.symbol_id(), packet->length);
-				ROS_ERROR(" ^- source_symbols=%u, repair_symbols=%u", header.source_symbols(), header.repair_symbols());
-				return;
-			}
+	/* 		if(res != Wirehair_Success) */
+	/* 		{ */
+	/* 			ROS_ERROR("Wirehair decode() error: %s", wirehair_result_string(res)); */
+	/* 			ROS_ERROR(" ^- on packet with symbol_id=%u, length=%lu", header.symbol_id(), packet->length); */
+	/* 			ROS_ERROR(" ^- source_symbols=%u, repair_symbols=%u", header.source_symbols(), header.repair_symbols()); */
+	/* 			return; */
+	/* 		} */
 
-			recoveredData.resize(header.source_symbols() * UDPPacket::MaxDataSize);
-			res = wirehair_recover(msg->decoder.get(), recoveredData.data(), recoveredData.size());
-			if(res != Wirehair_Success)
-			{
-				ROS_ERROR("Wirehair recover() error: %s", wirehair_result_string(res));
-				return;
-			}
-		}
-		else
-		{
-			recoveredData.resize(packet->length - sizeof(UDPPacket::Header));
-			memcpy(recoveredData.data(), packet->packet()->data, packet->length - sizeof(UDPPacket::Header));
-		}
-	}
-	else
-	{
+	/* 		recoveredData.resize(header.source_symbols() * UDPPacket::MaxDataSize); */
+	/* 		res = wirehair_recover(msg->decoder.get(), recoveredData.data(), recoveredData.size()); */
+	/* 		if(res != Wirehair_Success) */
+	/* 		{ */
+	/* 			ROS_ERROR("Wirehair recover() error: %s", wirehair_result_string(res)); */
+	/* 			return; */
+	/* 		} */
+	/* 	} */
+	/* 	else */
+	/* 	{ */
+	/* 		recoveredData.resize(packet->length - sizeof(UDPPacket::Header)); */
+	/* 		memcpy(recoveredData.data(), packet->packet()->data, packet->length - sizeof(UDPPacket::Header)); */
+	/* 	} */
+	/* } */
+	/* else */
+	/* { */
 		msg->received_symbols++;
 		if(msg->received_symbols < header.source_symbols())
 			return;
@@ -129,7 +129,7 @@ void Depacketizer::handleMessagePacket(std::list<PartialMessage>::iterator it, c
 				off += len;
 			}
 		}
-	}
+	/* } */
 
 	msg->complete = true;
 

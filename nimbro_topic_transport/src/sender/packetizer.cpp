@@ -5,8 +5,6 @@
 
 #include <random>
 
-#include <wirehair/wirehair.h>
-
 #include "../udp_packet.h"
 
 namespace nimbro_topic_transport
@@ -48,8 +46,8 @@ TopicPacketizer::TopicPacketizer(const Packetizer::Ptr& packetizer, const Topic:
 			throw std::runtime_error("Invalid FEC percentage.");
 	}
 
-	if(wirehair_init() != Wirehair_Success)
-		throw std::runtime_error("Could not initialize wirehair FEC library");
+	/* if(wirehair_init() != Wirehair_Success) */
+	/* 	throw std::runtime_error("Could not initialize wirehair FEC library"); */
 }
 
 TopicPacketizer::~TopicPacketizer()
@@ -172,46 +170,46 @@ std::vector<Packet::Ptr> TopicPacketizer::packetize(const Message::ConstPtr& msg
 		}
 		else
 		{
-			WirehairCodec encoder = wirehair_encoder_create(nullptr, messageData.data(), messageData.size(), UDPPacket::MaxDataSize);
-			if(!encoder)
-			{
-				ROS_ERROR("Could not create wirehair encoder!");
-				return {};
-			}
+			/* WirehairCodec encoder = wirehair_encoder_create(nullptr, messageData.data(), messageData.size(), UDPPacket::MaxDataSize); */
+			/* if(!encoder) */
+			/* { */
+			/* 	ROS_ERROR("Could not create wirehair encoder!"); */
+			/* 	return {}; */
+			/* } */
 
-			for(std::size_t i = 0; i < repairSymbols; ++i)
-			{
-				auto buf = std::make_shared<Packet>();
-				UDPPacket* packet = buf->packet();
+			/* for(std::size_t i = 0; i < repairSymbols; ++i) */
+			/* { */
+			/* 	auto buf = std::make_shared<Packet>(); */
+			/* 	UDPPacket* packet = buf->packet(); */
 
-				packet->header.msg_id = messageID;
-				packet->header.source_symbols = sourceSymbols;
-				packet->header.repair_symbols = repairSymbols;
-				packet->header.symbol_id = sourceSymbols + i;
-				packet->header.prng_seed = seed;
+			/* 	packet->header.msg_id = messageID; */
+			/* 	packet->header.source_symbols = sourceSymbols; */
+			/* 	packet->header.repair_symbols = repairSymbols; */
+			/* 	packet->header.symbol_id = sourceSymbols + i; */
+			/* 	packet->header.prng_seed = seed; */
 
-				uint32_t length = 0;
+			/* 	uint32_t length = 0; */
 
-				WirehairResult res = wirehair_encode(encoder, sourceSymbols + i, packet->data, UDPPacket::MaxDataSize, &length);
-				if(res != Wirehair_Success)
-				{
-					ROS_ERROR("Wirehair encode() error: %s", wirehair_result_string(res));
-					return {};
-				}
+			/* 	WirehairResult res = wirehair_encode(encoder, sourceSymbols + i, packet->data, UDPPacket::MaxDataSize, &length); */
+			/* 	if(res != Wirehair_Success) */
+			/* 	{ */
+			/* 		ROS_ERROR("Wirehair encode() error: %s", wirehair_result_string(res)); */
+			/* 		return {}; */
+			/* 	} */
 
-				if(length != UDPPacket::MaxDataSize)
-				{
-					ROS_ERROR("Unexpected wirehair output size: %u, expected %u",
-						length, UDPPacket::MaxDataSize
-					);
-				}
+			/* 	if(length != UDPPacket::MaxDataSize) */
+			/* 	{ */
+			/* 		ROS_ERROR("Unexpected wirehair output size: %u, expected %u", */
+			/* 			length, UDPPacket::MaxDataSize */
+			/* 		); */
+			/* 	} */
 
-				buf->length = length + sizeof(UDPPacket::Header);
+			/* 	buf->length = length + sizeof(UDPPacket::Header); */
 
-				packets.emplace_back(std::move(buf));
-			}
+			/* 	packets.emplace_back(std::move(buf)); */
+			/* } */
 
-			wirehair_free(encoder);
+			/* wirehair_free(encoder); */
 		}
 
 		{

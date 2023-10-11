@@ -40,10 +40,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
 
 add_library(nimbro_topic_transport
-	contrib/wirehair/wirehair.cpp
-	contrib/wirehair/gf256.cpp
-	contrib/wirehair/WirehairCodec.cpp
-	contrib/wirehair/WirehairTools.cpp
 	src/sender/compressor.cpp
 	src/sender/get_route.cpp
 	src/sender/packetizer.cpp
